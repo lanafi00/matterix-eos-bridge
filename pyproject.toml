@@ -1,0 +1,8 @@
+[project]
+name = "matterix_bridge"
+version = "0.1.0"
+description = f"EOS package matterix_bridge"
+readme = "README.md"
+dependencies = [
+  "eos",
+]
