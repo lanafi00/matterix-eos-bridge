@@ -1,0 +1,8 @@
+type: heater
+desc: Heater device. Talks to real hardware or a Matterix digital twin depending on `backend`,
+  so task.yml/protocol.yml stay identical between sim and real -- only lab.yml's init_parameters
+  differ.
+
+init_parameters:
+  backend: real   # "real" or "sim"
+  port: 5004      # used only when backend: real
