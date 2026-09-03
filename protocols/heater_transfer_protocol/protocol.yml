@@ -1,0 +1,23 @@
+type: heater_transfer_protocol
+desc: Turn on the heater and observe its Matterix digital twin heat a sample.
+
+labs:
+  - heater_transfer_lab
+
+tasks:
+  - name: turn_on_heater
+    type: Turn On Heater
+    desc: Heat the sample via the heater's digital twin
+    duration: 15
+    devices:
+      heater:
+        lab_name: heater_transfer_lab
+        name: heater
+    resources:
+      sample:
+        allocation_type: dynamic
+        resource_type: sample_vial
+    parameters:
+      target_temperature: eos_dynamic
+      matterix_protocol_type: heater_transfer_protocol
+    dependencies: []

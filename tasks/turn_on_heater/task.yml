@@ -1,0 +1,28 @@
+type: Turn On Heater
+desc: Heat a sample using the heater's Matterix digital twin.
+
+devices:
+  heater:
+    type: heater
+
+input_resources:
+  sample:
+    type: sample_vial
+
+input_parameters:
+  target_temperature:
+    type: float
+    unit: celsius
+    value: 75.0
+    min: 20.0
+    max: 150.0
+    desc: Target temperature for the heater
+
+  matterix_protocol_type:
+    type: str
+    value: heater_transfer_protocol
+    desc: >
+      The EOS protocol type string used to resolve this task's Matterix workflow (see
+      protocol_registry.py). BaseTask doesn't expose protocol_type on its own (only
+      protocol_run_name, an instance id, and task_name), so it's threaded through here
+      as a fixed parameter the protocol author sets, not something dynamic.

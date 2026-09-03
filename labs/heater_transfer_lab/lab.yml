@@ -1,0 +1,19 @@
+name: heater_transfer_lab
+desc: A lab for testing the heater device against its Matterix digital twin (exp3_heater_transfer).
+
+devices:
+  heater:
+    desc: Heater with a Matterix digital twin (IKA plate)
+    type: heater
+    computer: eos_computer
+    init_parameters:
+      backend: sim
+
+resource_types:
+  sample_vial:
+    meta:
+      capacity: 20  # ml
+
+resources:
+  sample_vial_1:
+    type: sample_vial
