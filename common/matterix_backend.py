@@ -65,15 +65,27 @@ class MatterixBackend:
         )
 
 
-def get_backend(scope_id: str):
+def get_backend(scope_id: str, conda_env: str = "isaaclab"):
     """Get-or-create the one backend actor for this run/campaign.
 
     First call for a given scope_id creates the actor (and, on its first run_workflow
     call, boots Isaac Sim); every later call with the same scope_id attaches to the same
-    live actor instead of creating a new one.
+    live actor instead of creating a new one (get_if_exists=True short-circuits before
+    `conda_env`/other constructor args are even looked at, so they only matter on that
+    first call).
+
+    conda_env: `eos start` launches Ray actors using EOS's own venv by default (no
+    isaaclab/omni/matterix_sm there) -- this actor specifically needs to run inside the
+    isaaclab conda env instead, via Ray's per-actor runtime_env override. UNVERIFIED as
+    of this commit: I confirmed `ray.remote(runtime_env={"conda": ...})` is real,
+    supported API (RuntimeEnv.__init__ accepts a conda env name), but haven't been able
+    to actually exercise it end-to-end (no Isaac Sim in this dev environment) -- this is
+    the first thing to check if get_backend()/run_workflow() fails with a
+    ModuleNotFoundError on isaaclab/omni when called from an EOS task.
     """
     return MatterixBackend.options(
         name=f"matterix_backend.{scope_id}",
         get_if_exists=True,
         lifetime="detached",
+        runtime_env={"conda": conda_env},
     ).remote()
