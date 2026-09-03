@@ -26,3 +26,12 @@ input_parameters:
       protocol_registry.py). BaseTask doesn't expose protocol_type on its own (only
       protocol_run_name, an instance id, and task_name), so it's threaded through here
       as a fixed parameter the protocol author sets, not something dynamic.
+
+  headless:
+    type: bool
+    value: true
+    desc: >
+      Whether Isaac Sim boots with no visible window. True (default) for real automated
+      runs; set false on submission to watch it on a display (e.g. over VNC) -- only
+      takes effect on the first run_workflow() call in a given MatterixBackend actor's
+      process, since Isaac Sim can't be reconfigured after boot.

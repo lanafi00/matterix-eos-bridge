@@ -16,6 +16,7 @@ class TurnOnHeater(BaseTask):
             protocol_run_name=self._protocol_run_name,
             protocol_type=parameters["matterix_protocol_type"],
             eos_task_name=self._task_name,
+            headless=parameters["headless"],
         )
 
         return None, resources, None

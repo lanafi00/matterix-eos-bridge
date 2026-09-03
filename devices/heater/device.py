@@ -30,6 +30,7 @@ class Heater(BaseDevice):
         protocol_run_name: str,
         protocol_type: str,
         eos_task_name: str,
+        headless: bool = True,
     ) -> Resource:
         """protocol_run_name/protocol_type/eos_task_name must come from the calling task
         (self._protocol_run_name, self._task_name on BaseTask) -- a device has no way to
@@ -39,6 +40,9 @@ class Heater(BaseDevice):
         protocol_run_name, an instance id, and task_name are) -- the calling task.py needs
         to supply it explicitly, e.g. hardcoded as a parameter in this task's protocol.yml,
         since the protocol author already knows their own protocol's type at authoring time.
+
+        headless only takes effect on the first run_workflow() call in this scope's
+        MatterixBackend process (Isaac Sim can't be reconfigured after boot).
         """
         if self._backend_mode == "sim":
             backend = get_backend(protocol_run_name)
@@ -47,7 +51,7 @@ class Heater(BaseDevice):
             # or e.g. 75 would be read as 75K (~-198C) instead of 348.15K.
             target_kelvin = target_temperature + 273.15
             ray.get(backend.set_parameter.remote(protocol_type, eos_task_name, "target_temperature", target_kelvin))
-            ray.get(backend.run_workflow.remote(protocol_type, eos_task_name))
+            ray.get(backend.run_workflow.remote(protocol_type, eos_task_name, headless=headless))
         else:
             pass  # TODO: self._client.send_command("heat", {"target_temperature": target_temperature})
 
