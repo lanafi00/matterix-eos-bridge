@@ -292,7 +292,23 @@ def run_workflow(
 
             while not (sm.action_sequence_success | sm.action_sequence_failure).all():
                 action, semantic_actions = sm.step(obs)
-                action = action.to(env.device)
+                if action is not None:
+                    action = action.to(env.device)
+                else:
+                    # A workflow with no agent actions at all (e.g. TurnOnHeaterCfg, a
+                    # pure semantic/equipment action with no agent_assets) leaves
+                    # matterix_sm's "hold current pose" fallback uninitialized -- it only
+                    # scopes to agents referenced in THIS action sequence, not the
+                    # scene's full action space (see Matterix's state_machine.py step()),
+                    # so sm.step() legitimately returns None even though env.step() still
+                    # needs a valid action tensor for whatever agents the scene has. We
+                    # don't own Matterix, so rather than patch that scoping bug upstream,
+                    # reuse the environment's own currently-cached action -- isaaclab's
+                    # ActionManager keeps a correctly-shaped, zero-initialized-by-default
+                    # buffer (env.action_manager.action) precisely for this "nothing new
+                    # to apply" case. This is isaaclab's own standard state, not a value
+                    # we're guessing at.
+                    action = env.action_manager.action
                 obs, _, terminated, truncated, _ = env.step(action, semantic_actions=semantic_actions)
                 step_count += 1
 
