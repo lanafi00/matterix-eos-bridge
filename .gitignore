@@ -182,3 +182,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Isaac Sim/isaaclab run output written to CWD by the recorder manager
+datasets/
+out/
