@@ -21,6 +21,11 @@ EOS_PATH = os.getenv("EOS_PATH", "/home/lila/Documents/git/eos")
 if EOS_PATH not in sys.path:
     sys.path.insert(0, EOS_PATH)
 
+# Set SKIP_STAGE0=1 to jump straight to Stage 1 once Stage 0 has already passed once --
+# cuts a slow debug loop (Isaac Sim boot + full exp1 workflow) down to just the stage
+# that's actually being debugged.
+SKIP_STAGE0 = os.getenv("SKIP_STAGE0") == "1"
+
 
 def stage(name):
     print(f"\n{'=' * 70}\n{name}\n{'=' * 70}")
@@ -43,21 +48,24 @@ def fail(msg, exc=None):
 # Uses exp1_beaker_pick since that's the one the matterix-experiments README said was most
 # validated -- isolates "is Matterix working" from "does the bridge's own logic work"
 # (stages 1+ exercise bridge-specific code: registries, workflow_overrides, MatterixBackend).
-stage("Stage 0: baseline run_workflow() sanity (exp1_beaker_pick)")
-try:
-    from user.matterix_bridge.common.runtime import run_workflow
+from user.matterix_bridge.common.runtime import run_workflow
 
-    result = run_workflow(
-        task="Matterix-Experiment-Beaker-Pick-Franka-v1",
-        workflow="pickup_beaker",
-        num_envs=1,
-        max_episodes=1,
-        headless=True,
-        print_progress=False,
-    )
-    ok(f"run_workflow() completed: success={result.success}")
-except Exception as e:
-    fail("baseline run_workflow() call failed -- fix this before testing the bridge", e)
+if SKIP_STAGE0:
+    print("\nSKIPPING Stage 0 (SKIP_STAGE0=1) -- assuming it already passed once.")
+else:
+    stage("Stage 0: baseline run_workflow() sanity (exp1_beaker_pick)")
+    try:
+        result = run_workflow(
+            task="Matterix-Experiment-Beaker-Pick-Franka-v1",
+            workflow="pickup_beaker",
+            num_envs=1,
+            max_episodes=1,
+            headless=True,
+            print_progress=False,
+        )
+        ok(f"run_workflow() completed: success={result.success}")
+    except Exception as e:
+        fail("baseline run_workflow() call failed -- fix this before testing the bridge", e)
 
 
 # --- Stage 1: protocol_registry.py resolves correctly.
