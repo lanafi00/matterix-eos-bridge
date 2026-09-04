@@ -143,6 +143,17 @@ def _get_env(
 
         env_cfg = parse_env_cfg(task, device=device, num_envs=num_envs, use_fabric=use_fabric)
 
+        # Matterix's setup_recorder() only scopes the HDF5 dataset recorder's output path
+        # off `record_path` when it's set (matterix_base_env.py) -- left None (the default),
+        # every environment on the machine writes to the same hardcoded
+        # /tmp/isaaclab/logs/dataset.hdf5 (see isaaclab's RecorderManagerBaseCfg). VERIFIED:
+        # any second live environment of the same task -- a different scope_id's
+        # MatterixBackend actor, or even an earlier stage's env in this same process that
+        # was never closed -- then hits `BlockingIOError: unable to lock file` the moment it
+        # tries to create that same file. Scope it per process so concurrent scope_ids (the
+        # whole point of get_backend(scope_id)) don't collide.
+        env_cfg.record_path = f"/tmp/isaaclab/logs/matterix_bridge/pid{os.getpid()}/dataset.hdf5"
+
         for slot, (lab_name, device_name) in (devices or {}).items():
             if slot not in env_cfg.articulated_assets:
                 raise ValueError(
