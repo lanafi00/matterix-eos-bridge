@@ -51,7 +51,8 @@ gym.register(
     entry_point="matterix.envs:MatterixBaseEnv",
     kwargs={"env_cfg_entry_point": my_scene_env_cfg.MySceneEnvCfg},
     disable_env_checker=True,
-)```
+)
+```
 After creating `scenes/<your_scene>/`, add it to the import list in `scenes/__init__.py`.
 4. Add an entry to PROTOCOL_TWINS/TASK_WORKFLOWS dictionary inside `matterix-eos-bridge/common/protocol_registry.py`. PROTOCOL_TWINS maps one protocol type to one scene.   
 
