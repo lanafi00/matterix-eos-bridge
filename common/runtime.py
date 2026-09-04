@@ -94,12 +94,13 @@ def _discover_scene_modules() -> None:
     matterix_bridge-specific plugin system.
     """
     import importlib
+    from pathlib import Path
 
     from eos.configuration.packages import discover_packages
 
-    user_dir = os.path.join(_eos_path(), "user")
+    user_dir = Path(_eos_path()) / "user"
     for package in discover_packages(user_dir).values():
-        if os.path.isfile(os.path.join(package.path, "scenes", "__init__.py")):
+        if (package.path / "scenes" / "__init__.py").is_file():
             importlib.import_module(f"user.{package.name}.scenes")
 
 
