@@ -60,6 +60,49 @@ _current_env = None
 _current_env_cfg = None
 
 
+def _eos_path() -> str:
+    """The sys.path entry that made `user.matterix_bridge` importable in *this* process --
+    walked up from this file's own on-disk location (common/runtime.py -> common ->
+    matterix_bridge -> user -> EOS_PATH) instead of reading a separately-set env var, so
+    it's correct regardless of how the caller's sys.path got EOS_PATH onto it (manual
+    sys.path.insert, PYTHONPATH, EOS's own package loader, ...).
+
+    Deliberately uses `os.path.abspath`, not `Path.resolve()`/`os.path.realpath` -- this
+    package is loaded through a symlink (`eos/user/matterix_bridge -> .../matterix-eos-
+    bridge`), and resolving that symlink away would walk up from the *real* on-disk repo
+    instead of from `eos/user/matterix_bridge`, landing one directory short of EOS_PATH.
+    `abspath` normalizes the path without touching symlinks, so the `eos/user/` segment
+    from how this module was actually imported is preserved.
+
+    Used by `_discover_scene_modules()` below to find EOS's `user/` directory, and by
+    `matterix_backend.py`'s `get_backend()` to forward PYTHONPATH to a runtime_env-scoped
+    Ray actor that doesn't inherit this process's in-memory sys.path.
+    """
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+
+def _discover_scene_modules() -> None:
+    """Import every EOS package's `scenes` subpackage, if it has one.
+
+    Registers that package's Matterix Gym environments as a side effect of import (see
+    this repo's own `scenes/__init__.py` for the pattern) -- this is what lets a package
+    other than matterix_bridge define its own scenes without editing anything inside
+    this repo: it just needs a `scenes/` subpackage with an `__init__.py` that calls
+    `gym.register()`, following the same convention this package's own `scenes/`
+    directory uses. Reuses EOS's own package discovery (the same mechanism EOS itself
+    uses to find labs/devices/protocols/tasks) rather than inventing a separate,
+    matterix_bridge-specific plugin system.
+    """
+    import importlib
+
+    from eos.configuration.packages import discover_packages
+
+    user_dir = os.path.join(_eos_path(), "user")
+    for package in discover_packages(user_dir).values():
+        if os.path.isfile(os.path.join(package.path, "scenes", "__init__.py")):
+            importlib.import_module(f"user.{package.name}.scenes")
+
+
 def ensure_app_launched(headless: bool = True, device: str = "cuda:0", enable_cameras: bool = False) -> None:
     """Launch Isaac Sim for this process, if it isn't already running.
 
@@ -123,7 +166,7 @@ def _get_env(
     import gymnasium as gym
     from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
 
-    import user.matterix_bridge.scenes  # noqa: F401  (registers Matterix-Experiment-* envs)
+    _discover_scene_modules()  # registers every EOS package's Matterix-Experiment-* envs
     from user.matterix_bridge.common.device_registry import resolve_device_twin
 
     try:

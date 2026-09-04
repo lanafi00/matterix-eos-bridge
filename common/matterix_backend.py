@@ -27,6 +27,8 @@ from typing import Any
 
 import ray
 
+from user.matterix_bridge.common.runtime import _eos_path
+
 
 @ray.remote
 class MatterixBackend:
@@ -64,19 +66,6 @@ class MatterixBackend:
         return run_workflow(
             task=task, workflow=workflow, devices=devices, workflow_overrides=overrides, **run_workflow_kwargs
         )
-
-
-def _eos_path() -> str:
-    """The sys.path entry that made `user.matterix_bridge` importable in *this* process --
-    walked up from this file's own on-disk location (common/matterix_backend.py -> common
-    -> matterix_bridge -> user -> EOS_PATH) instead of reading a separately-set env var, so
-    it's correct regardless of how the caller's sys.path got EOS_PATH onto it (manual
-    sys.path.insert, PYTHONPATH, EOS's own package loader, ...). Needed because a
-    runtime_env-scoped actor (see get_backend() below) boots a genuinely fresh interpreter
-    that does NOT inherit the driver's in-memory sys.path -- only real env vars survive
-    that boundary, so this has to be forwarded explicitly as PYTHONPATH.
-    """
-    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 
 def get_backend(scope_id: str, conda_env: str = "isaaclab", num_gpus: int = 1):

@@ -3,7 +3,8 @@ matterix_bridge (and by extension EOS) has no functional dependency on that sand
 
 Each sub-package defines one self-contained environment (robots + objects + observations
 + workflows) and registers it as a Gym environment. Importing this package registers all
-of them -- see common/runtime.py's `import user.matterix_bridge.scenes` (noqa: F401).
+of them -- see common/runtime.py's `_discover_scene_modules()`, which imports this
+package (and any other EOS package's own `scenes` subpackage) automatically.
 
 Scenes, in increasing order of complexity:
 
