@@ -40,9 +40,16 @@ class DeviceName(BaseDevice):
             ray.get(backend.set_parameter.remote(protocol_type, eos_task_name, "target_rpm", target_rpm))
             ray.get(backend.run_workflow.remote(protocol_type, eos_task_name, headless=headless))`
 ```
-            
-2. (Optional) If your scene has an actuated slot (e.g. a robot) that should be fillable by different physical hardware depending on which lab/device calls it, add an entry to DEVICE_TWINS in device_registry.py. Most new devices (anything that just triggers an existing or new workflow, rather than swapping which robot backs a scene)  don't need this at all.  
-3. Modify an existing scene in `scenes/` to swap out assets, change parameters, or add/re-sequence task nodes. If needed, add a new scene to `scenes/`, selecting whichever example is closest to your intended goal and using it as a template. Then add an `__init__.py` next to it, following this template:
+2. Call register_protocol()/register_task_workflow() (from protocol_registry.py)
+```
+   from user.matterix_bridge.common.protocol_registry import register_protocol, register_task_workflow
+   
+   register_protocol("my_lab_protocol", "Matterix-Experiment-My-Scene-v1")
+   register_task_workflow("my_lab_protocol", "my_task", "my_workflow")
+```
+
+4.  (Optional) If your scene has an actuated slot (e.g. a robot) that should be fillable by different physical hardware depending on which lab/device calls it, call register_device_twin() (from device_registry.py) 
+5. Modify an existing scene in `scenes/` to swap out assets, change parameters, or add/re-sequence task nodes. If needed, add a new scene to `scenes/`, selecting whichever example is closest to your intended goal and using it as a template. Then add an `__init__.py` next to it, following this template:
 ```import gymnasium as gym
 from . import my_scene_env_cfg
 
@@ -54,6 +61,6 @@ gym.register(
 )
 ```
 After creating `scenes/<your_scene>/`, add it to the import list in `scenes/__init__.py`.
-4. Add an entry to PROTOCOL_TWINS/TASK_WORKFLOWS dictionary inside `matterix-eos-bridge/common/protocol_registry.py`. PROTOCOL_TWINS maps one protocol type to one scene.   
+ 
 
 
