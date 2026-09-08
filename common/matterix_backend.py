@@ -68,7 +68,7 @@ class MatterixBackend:
         )
 
 
-def get_backend(scope_id: str, conda_env: str = "isaaclab", num_gpus: int = 1):
+def get_backend(scope_id: str, conda_env: str | None = None, num_gpus: int = 1):
     """Get-or-create the one backend actor for this run/campaign.
 
     First call for a given scope_id creates the actor (and, on its first run_workflow
@@ -96,18 +96,43 @@ def get_backend(scope_id: str, conda_env: str = "isaaclab", num_gpus: int = 1):
     `ModuleNotFoundError: No module named 'user'` until PYTHONPATH was forwarded explicitly
     via `env_vars` below.
 
-    ROOT CAUSE, CONFIRMED (not just suspected) via a real `eos start` run: Ray's per-actor
-    `runtime_env={"conda": ...}` CANNOT relocate this actor to a different Python
-    installation than the one that called `ray.init()`. The raylet bakes an ABSOLUTE path to
-    that Python (e.g. `.../eos/.venv/bin/python3`) into its `--python_worker_command` at
-    startup; the "conda" plugin only wraps that fixed, already-resolved absolute path with a
-    `conda activate isaaclab &&` shell prefix. That prefix correctly sets CONDA_PREFIX/PATH
-    (which is why a naive check of those env vars looks right) but never changes *which
-    binary actually gets exec'd* -- an absolute path is immune to PATH changes. So a real
-    `eos start` process (running from EOS's own uv-managed venv, per its README) reliably
-    produces `ModuleNotFoundError: No module named 'isaaclab'` here, regardless of
-    conda_env/PYTHONPATH -- reproduced with EOS's REST API end to end (task -> Heater actor
-    -> this actor -> `ensure_app_launched()` -> `from isaaclab.app import AppLauncher`).
+    ROOT CAUSE (superseded -- see CORRECTION below): this section originally claimed Ray's
+    per-actor `runtime_env={"conda": ...}` CANNOT relocate this actor to a different Python
+    installation than the one that called `ray.init()`, and that the "conda" plugin only
+    wraps the raylet's fixed, already-resolved absolute worker-python path with a `conda
+    activate isaaclab &&` shell prefix that never changes *which binary actually gets
+    exec'd*. That was wrong. Kept verbatim below for history; do not trust the mechanism
+    claim.
+
+    Original (incorrect) text: Ray's per-actor `runtime_env={"conda": ...}` CANNOT relocate
+    this actor to a different Python installation than the one that called `ray.init()`. The
+    raylet bakes an ABSOLUTE path to that Python (e.g. `.../eos/.venv/bin/python3`) into its
+    `--python_worker_command` at startup; the "conda" plugin only wraps that fixed,
+    already-resolved absolute path with a `conda activate isaaclab &&` shell prefix. That
+    prefix correctly sets CONDA_PREFIX/PATH (which is why a naive check of those env vars
+    looks right) but never changes *which binary actually gets exec'd* -- an absolute path
+    is immune to PATH changes. So a real `eos start` process (running from EOS's own
+    uv-managed venv, per its README) reliably produces `ModuleNotFoundError: No module named
+    'isaaclab'` here, regardless of conda_env/PYTHONPATH -- reproduced with EOS's REST API
+    end to end (task -> Heater actor -> this actor -> `ensure_app_launched()` -> `from
+    isaaclab.app import AppLauncher`).
+
+    CORRECTION, EMPIRICALLY VERIFIED: `runtime_env={"conda": <name>}` DOES relocate the actor
+    to that named conda env's own `bin/python` -- confirmed by probing `sys.executable`
+    inside a live actor requesting `{"conda": "isaaclab"}` from an `eos start` process
+    running under `eos-isaaclab`: it came back as
+    `.../miniconda3/envs/isaaclab/bin/python`, not the driver's `eos-isaaclab` python. That
+    means a hardcoded `conda_env="isaaclab"` default genuinely relocates every sim-mode
+    device call to the bare `isaaclab` env, which has isaacsim/isaaclab/matterix but NOT
+    `eos`'s own dependencies (e.g. `bofire`) -- and `resolve_matterix_call()` in
+    `protocol_registry.py` needs `eos.configuration.packages` (which imports `bofire`
+    transitively via `lab_def.py`) for `_discover_registrations()`. Net effect: every real
+    `eos start`-triggered sim task failed with `ModuleNotFoundError: No module named
+    'bofire'` *before Isaac Sim ever booted* (never even reached `AppLauncher`), regardless
+    of which package's device called `get_backend()` -- not specific to heater_transfer.
+    Fixed by making `conda_env` default to the driver's own `CONDA_DEFAULT_ENV` instead of a
+    hardcoded string, so requesting the "same" env is a genuine no-op instead of an
+    accidental relocation to a different, incompatible one.
 
     FIX, VERIFIED WORKING: `eos start` itself must run from a Python that already has
     isaaclab/matterix_sm installed, so the raylet's baked-in worker command is correct from
@@ -142,6 +167,12 @@ def get_backend(scope_id: str, conda_env: str = "isaaclab", num_gpus: int = 1):
     is a small change to EOS's own startup code, not just this bridge, and hasn't been
     attempted.
     """
+    if conda_env is None:
+        # Default to the driver's own conda env, not a hardcoded name, so requesting the
+        # "same" env is a genuine no-op instead of an accidental relocation to a different,
+        # possibly incompatible one (see CORRECTION above).
+        conda_env = os.environ.get("CONDA_DEFAULT_ENV", "isaaclab")
+
     env_vars = {"PYTHONPATH": _eos_path()}
     if "DISPLAY" in os.environ:
         # Forwarded for the same reason as PYTHONPATH -- a runtime_env-scoped actor doesn't

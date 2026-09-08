@@ -14,18 +14,21 @@ register_protocol("pick_and_place_protocol", "Matterix-Experiment-Pick-Place-Fra
 register_protocol("heater_transfer_protocol", "Matterix-Experiment-Heater-Transfer-Franka-v1")
 register_protocol("dual_arm_handoff_protocol", "Matterix-Experiment-Dual-Arm-Handoff-Franka-v1")
 
+# workflow_key is omitted below wherever it's the same string as the EOS task name (the
+# common case) -- register_task_workflow() defaults it to eos_task_name. "pick_beaker" ->
+# "pickup_beaker" is the one name that actually differs, so that one stays explicit.
 register_task_workflow("beaker_pick_protocol", "pick_beaker", "pickup_beaker")
 
 register_task_workflow("pick_and_place_protocol", "pick_beaker", "pickup_beaker")
-register_task_workflow("pick_and_place_protocol", "place_beaker", "place_beaker")
+register_task_workflow("pick_and_place_protocol", "place_beaker")
 
-register_task_workflow("heater_transfer_protocol", "turn_on_heater", "turn_on_heater")
-register_task_workflow("heater_transfer_protocol", "pick_beaker", "pick_beaker")
-register_task_workflow("heater_transfer_protocol", "place_beaker", "place_beaker")
-register_task_workflow("heater_transfer_protocol", "wait_for_heat_transfer", "wait_for_heat_transfer")
-register_task_workflow("heater_transfer_protocol", "turn_off_heater", "turn_off_heater")
+register_task_workflow("heater_transfer_protocol", "turn_on_heater")
+register_task_workflow("heater_transfer_protocol", "pick_beaker")
+register_task_workflow("heater_transfer_protocol", "place_beaker")
+register_task_workflow("heater_transfer_protocol", "wait_for_heat_transfer")
+register_task_workflow("heater_transfer_protocol", "turn_off_heater")
 
-register_task_workflow("dual_arm_handoff_protocol", "robot_pick_beaker", "robot_pick_beaker")
-register_task_workflow("dual_arm_handoff_protocol", "robot_place_on_station", "robot_place_on_station")
-register_task_workflow("dual_arm_handoff_protocol", "wait_for_handoff", "wait_for_handoff")
-register_task_workflow("dual_arm_handoff_protocol", "robot2_pick_beaker", "robot2_pick_beaker")
+register_task_workflow("dual_arm_handoff_protocol", "robot_pick_beaker")
+register_task_workflow("dual_arm_handoff_protocol", "robot_place_on_station")
+register_task_workflow("dual_arm_handoff_protocol", "wait_for_handoff")
+register_task_workflow("dual_arm_handoff_protocol", "robot2_pick_beaker")

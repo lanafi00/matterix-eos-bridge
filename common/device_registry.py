@@ -12,9 +12,15 @@ across labs/deployments. See `resolve_device_twin()`'s docstring and `run_workfl
 
 Populated via `register_device_twin()` rather than edited as literal dict entries, so a
 package other than this one can register its own lab's device -> twin bindings from its
-own code instead of editing this file directly - call it from your package's
-`__init__.py` (or anywhere guaranteed to run before `resolve_device_twin()` is first
-called for that device).
+own code instead of editing this file directly - call it from your package's top-level
+`scenes/__init__.py` (the same file where you `gym.register()` your scene, and the same
+file `protocol_registry.py`'s docstring points to for this). Not a package-root
+`__init__.py` - EOS packages here are plain namespace packages with none of those (see
+this repo's own `user/matterix_bridge`, or EOS's own `user/example`). `scenes/__init__.py`
+is the right spot because it's auto-imported by runtime.py's `_discover_scene_modules()`
+after Isaac Sim has booted, which twin config classes need (they come from
+`matterix_assets`, an isaaclab-dependent package) - see `protocol_registry.py`'s
+docstring for why that's also why this can't go in `matterix_registrations.py`.
 """
 
 from __future__ import annotations
@@ -22,7 +28,6 @@ from __future__ import annotations
 from typing import Callable
 
 from matterix_assets.matterix_articulation import MatterixArticulationCfg
-from matterix_assets.robots import FRANKA_PANDA_HIGH_PD_IK_CFG
 
 DEVICE_TWINS: dict[tuple[str, str], Callable[..., MatterixArticulationCfg]] = {}
 
@@ -67,9 +72,3 @@ def resolve_device_twin(
             "it (see matterix_bridge/common/device_registry.py)."
         )
     return DEVICE_TWINS[key](pos=existing.pos, rot=existing.rot)
-
-
-# This package's own example device, registered the same way an external package
-# should register its own - see this module's docstring. Not a real device; it's a
-# placeholder illustrating the shape.
-register_device_twin("example_lab", "franka_01", FRANKA_PANDA_HIGH_PD_IK_CFG)
