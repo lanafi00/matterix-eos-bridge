@@ -27,7 +27,30 @@ Example workflow, as included in this package:
 
 You don't need to touch this repo. Your package just imports it.
 
-1. **Device driver.** In `<your_package>/devices/<type>/device.py`:
+1. **Scene.** Copy the closest example under `scenes/`. This is what decides the gym id and workflow key names you'll use in step 2. Needs an `__init__.py`:
+
+   ```python
+   import gymnasium as gym
+   from . import my_scene_env_cfg
+
+   gym.register(
+       id="Matterix-Experiment-My-Scene-v1",
+       entry_point="matterix.envs:MatterixBaseEnv",
+       kwargs={"env_cfg_entry_point": my_scene_env_cfg.MySceneEnvCfg},
+       disable_env_checker=True,
+   )
+   ```
+
+2. **Register the protocol/task -> Matterix bindings**, in `<your_package>/matterix_registrations.py` (plain strings only), using the gym id and workflow keys from step 1:
+
+   ```python
+   from user.matterix_bridge.common.protocol_registry import register_protocol, register_task_workflow
+
+   register_protocol("my_protocol", "Matterix-Experiment-My-Scene-v1")
+   register_task_workflow("my_protocol", "my_task")  # workflow_key defaults to the task name -- pass it explicitly only if it differs
+   ```
+
+3. **Device driver.** In `<your_package>/devices/<type>/device.py`:
 
    ```python
    import ray
@@ -42,36 +65,13 @@ You don't need to touch this repo. Your package just imports it.
                ray.get(backend.run_workflow.remote(protocol_type, eos_task_name, headless=headless))
    ```
 
-2. **Register the protocol/task -> Matterix bindings**, in `<your_package>/matterix_registrations.py` (plain strings only):
-
-   ```python
-   from user.matterix_bridge.common.protocol_registry import register_protocol, register_task_workflow
-
-   register_protocol("my_protocol", "Matterix-Experiment-My-Scene-v1")
-   register_task_workflow("my_protocol", "my_task")  # workflow_key defaults to the task name -- pass it explicitly only if it differs
-   ```
-
-3. **Register a device twin, only if your device fills an articulated-asset slot more than one physical robot could occupy.** Most devices skip this. Goes in `<your_package>/scenes/__init__.py`.
+4. **Register a device twin, only if your device fills an articulated-asset slot more than one physical robot could occupy.** Most devices skip this. Goes in the same `scenes/__init__.py` from step 1.
 
    ```python
    from matterix_assets.robots import FRANKA_PANDA_HIGH_PD_IK_CFG
    from user.matterix_bridge.common.device_registry import register_device_twin
 
    register_device_twin("my_lab", "my_arm", FRANKA_PANDA_HIGH_PD_IK_CFG)
-   ```
-
-4. **Scene.** Copy the closest example under `scenes/`. Needs an `__init__.py`:
-
-   ```python
-   import gymnasium as gym
-   from . import my_scene_env_cfg
-
-   gym.register(
-       id="Matterix-Experiment-My-Scene-v1",
-       entry_point="matterix.envs:MatterixBaseEnv",
-       kwargs={"env_cfg_entry_point": my_scene_env_cfg.MySceneEnvCfg},
-       disable_env_checker=True,
-   )
    ```
 
 Your package doesn't need `eos` installed wherever Isaac Sim runs, only isaaclab/matterix. `eos start` itself needs both in the same env.
