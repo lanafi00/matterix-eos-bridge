@@ -23,6 +23,26 @@ Example workflow, as included in this package:
 5. `common/runtime.py` boots Isaac Sim (once), builds/reuses the gym environment defined in `scenes/exp3_heater_transfer/`, and runs that one workflow (a TurnOnHeaterCfg semantic action) to completion.
 6. The result (e.g. sample temperature) flows back up through the actor to the device driver to the task, and is stored on the EOS Resource.
 
+## Installing this into an EOS deployment
+
+1. Get the Matterix packages (`matterix`, `matterix_assets`, `matterix_sm`, `matterix_tasks`) installed in editable mode into a conda env that already has Isaac Lab -- see [Matterix's own README](https://github.com/ac-rad/Matterix) for the exact steps.
+
+2. Make sure `eos` is installed in that *same* env, not EOS's plain `uv` venv. `eos start` has to run from a Python that already has both `eos` and isaaclab/matterix. This project uses a dedicated conda env for that:
+
+   ```bash
+   conda create --name eos-isaaclab --clone isaaclab
+   conda activate eos-isaaclab
+   pip install -e <path to eos repo>
+   ```
+
+3. Symlink this repo into `<eos repo>/user/matterix_bridge`:
+
+   ```bash
+   ln -s /path/to/matterix-eos-bridge <eos repo>/user/matterix_bridge
+   ```
+
+4. `eos start`, from the conda env in step 2.
+
 ## Using this from your own EOS package
 
 You don't need to touch this repo. Your package just imports it.
