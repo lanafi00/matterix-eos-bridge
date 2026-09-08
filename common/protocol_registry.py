@@ -100,9 +100,15 @@ def _discover_registrations() -> None:
     """Import every EOS package's `matterix_registrations.py`, if it has one -- once per
     process. See this module's docstring for the convention this implements.
 
-    Reuses EOS's own package discovery (the same mechanism EOS itself uses to find
-    labs/devices/protocols/tasks, and that runtime.py's `_discover_scene_modules()`
-    also reuses) rather than a separate, matterix_bridge-specific plugin system.
+    Uses `runtime.py`'s `_discover_user_package_dirs()`, NOT EOS's own package discovery
+    (`eos.configuration.packages.discover_packages()`) -- deliberately, because this runs
+    inside `MatterixBackend`'s actor (see `matterix_backend.py`), which `get_backend()`
+    can relocate via `runtime_env={"conda": ...}` to a conda env that has isaaclab/
+    matterix but not `eos` itself. Importing `eos.configuration.packages` there pulls in
+    EOS's full entity/pydantic model tree (`LabDef` -> `bofire`) as a side effect and
+    fails with `ModuleNotFoundError: No module named 'bofire'` before this function's own
+    logic ever runs -- see `_discover_user_package_dirs()`'s docstring for the verified
+    repro. Same reason `_discover_scene_modules()` in runtime.py avoids it too.
     """
     global _registrations_discovered
     if _registrations_discovered:
@@ -112,14 +118,12 @@ def _discover_registrations() -> None:
     import importlib
     from pathlib import Path
 
-    from eos.configuration.packages import discover_packages
-
-    from user.matterix_bridge.common.runtime import _eos_path
+    from user.matterix_bridge.common.runtime import _discover_user_package_dirs, _eos_path
 
     user_dir = Path(_eos_path()) / "user"
-    for package in discover_packages(user_dir).values():
-        if (package.path / "matterix_registrations.py").is_file():
-            importlib.import_module(f"user.{package.name}.matterix_registrations")
+    for package_dir in _discover_user_package_dirs(user_dir):
+        if (package_dir / "matterix_registrations.py").is_file():
+            importlib.import_module(f"user.{package_dir.name}.matterix_registrations")
 
 
 def resolve_matterix_call(protocol_type: str, eos_task_name: str) -> tuple[str, str]:

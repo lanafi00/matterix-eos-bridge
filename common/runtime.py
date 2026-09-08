@@ -81,6 +81,49 @@ def _eos_path() -> str:
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 
+def _discover_user_package_dirs(user_dir) -> list:
+    """Find every EOS package directory (one containing a `pyproject.toml`) under `user_dir`.
+
+    A minimal reimplementation of `eos.configuration.packages.discover_packages()`'s
+    directory walk -- deliberately NOT importing that module. `from
+    eos.configuration.packages import discover_packages` pulls in EOS's entire
+    entity/pydantic model tree as a side effect of import (`LabDef` imports `bofire`, an
+    EOS *optimizer* dependency, wholly unrelated to finding files by name), which this
+    process may not have: `get_backend()` in matterix_backend.py can relocate the calling
+    actor (via `runtime_env={"conda": ...}`) to a conda env that has isaaclab/matterix but
+    not `eos` itself. VERIFIED: importing `eos.configuration.packages` from a bare
+    `isaaclab` conda env (isaacsim/isaaclab/matterix/ray, no `eos`) fails with
+    `ModuleNotFoundError: No module named 'bofire'` -- before Isaac Sim ever boots,
+    regardless of which package's device called `get_backend()`. Avoiding that import
+    here is what lets that env stay bare (no `eos`, no dependency conflicts with
+    isaaclab/isaacsim's own pins) instead of needing `eos` installed alongside isaaclab.
+
+    Same discovery rule as the real one: a directory counts once it contains a
+    `pyproject.toml`; its own subdirectories aren't searched further (a package can't
+    nest another package inside it). Does NOT replicate `discover_packages()`'s
+    duplicate-package-name detection -- this is only used to *find* files by a fixed
+    name (`scenes/__init__.py`, `matterix_registrations.py`), not to resolve labs/devices/
+    tasks/protocols by name the way EOS's own loader does, so a same-named-package clash
+    isn't a concern this function needs to catch.
+    """
+    from pathlib import Path
+
+    found: list[Path] = []
+
+    def scan(current: Path, depth: int) -> None:
+        if depth > 10 or not current.is_dir():
+            return
+        if (current / "pyproject.toml").is_file() and current != user_dir:
+            found.append(current)
+            return
+        for item in current.iterdir():
+            if item.is_dir():
+                scan(item, depth + 1)
+
+    scan(Path(user_dir), 0)
+    return found
+
+
 def _discover_scene_modules() -> None:
     """Import every EOS package's `scenes` subpackage, if it has one.
 
@@ -89,19 +132,17 @@ def _discover_scene_modules() -> None:
     other than matterix_bridge define its own scenes without editing anything inside
     this repo: it just needs a `scenes/` subpackage with an `__init__.py` that calls
     `gym.register()`, following the same convention this package's own `scenes/`
-    directory uses. Reuses EOS's own package discovery (the same mechanism EOS itself
-    uses to find labs/devices/protocols/tasks) rather than inventing a separate,
-    matterix_bridge-specific plugin system.
+    directory uses. Uses `_discover_user_package_dirs()` above (not EOS's own package
+    discovery) so this stays importable in an isaaclab-only conda env with no `eos`
+    installed -- see that function's docstring for why.
     """
     import importlib
     from pathlib import Path
 
-    from eos.configuration.packages import discover_packages
-
     user_dir = Path(_eos_path()) / "user"
-    for package in discover_packages(user_dir).values():
-        if (package.path / "scenes" / "__init__.py").is_file():
-            importlib.import_module(f"user.{package.name}.scenes")
+    for package_dir in _discover_user_package_dirs(user_dir):
+        if (package_dir / "scenes" / "__init__.py").is_file():
+            importlib.import_module(f"user.{package_dir.name}.scenes")
 
 
 def ensure_app_launched(headless: bool = True, device: str = "cuda:0", enable_cameras: bool = False) -> None:
@@ -115,6 +156,23 @@ def ensure_app_launched(headless: bool = True, device: str = "cuda:0", enable_ca
     global _app_launcher, _simulation_app
     if _simulation_app is not None:
         return
+
+    # Ray installs uvloop's event loop policy process-wide for actors, on its own,
+    # whenever uvloop is merely importable in the environment -- confirmed live: a bare
+    # ray.remote actor reports asyncio.get_event_loop_policy() as a uvloop policy before
+    # any of this module's code runs, purely because `eos`'s own dependencies (litestar/
+    # uvicorn) pull in uvloop, e.g. in the "clone eos's own deps into an isaaclab conda
+    # env" deployment (see matterix_backend.py's get_backend() docstring). Isaac Sim's
+    # own `omni.kit.async_engine` assumes a stock CPython event loop (accesses private
+    # attributes like `_stopping`/`_ready`/`_check_closed` uvloop's Loop doesn't have),
+    # so it crashes deep inside USD asset loading the moment it touches asyncio --
+    # confirmed reproducible, not flaky, on two independent fresh actors. Reset to the
+    # stdlib default here, before AppLauncher (and Isaac Sim's extension system) ever
+    # gets a chance to touch asyncio -- resetting later, e.g. inside run_workflow(),
+    # would be too late since AppLauncher's own construction already triggers it.
+    import asyncio
+
+    asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
 
     from isaaclab.app import AppLauncher
 

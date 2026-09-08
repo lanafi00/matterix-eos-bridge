@@ -96,43 +96,54 @@ def get_backend(scope_id: str, conda_env: str | None = None, num_gpus: int = 1):
     `ModuleNotFoundError: No module named 'user'` until PYTHONPATH was forwarded explicitly
     via `env_vars` below.
 
-    ROOT CAUSE (superseded -- see CORRECTION below): this section originally claimed Ray's
-    per-actor `runtime_env={"conda": ...}` CANNOT relocate this actor to a different Python
-    installation than the one that called `ray.init()`, and that the "conda" plugin only
-    wraps the raylet's fixed, already-resolved absolute worker-python path with a `conda
-    activate isaaclab &&` shell prefix that never changes *which binary actually gets
-    exec'd*. That was wrong. Kept verbatim below for history; do not trust the mechanism
-    claim.
-
-    Original (incorrect) text: Ray's per-actor `runtime_env={"conda": ...}` CANNOT relocate
-    this actor to a different Python installation than the one that called `ray.init()`. The
-    raylet bakes an ABSOLUTE path to that Python (e.g. `.../eos/.venv/bin/python3`) into its
-    `--python_worker_command` at startup; the "conda" plugin only wraps that fixed,
-    already-resolved absolute path with a `conda activate isaaclab &&` shell prefix. That
-    prefix correctly sets CONDA_PREFIX/PATH (which is why a naive check of those env vars
-    looks right) but never changes *which binary actually gets exec'd* -- an absolute path
-    is immune to PATH changes. So a real `eos start` process (running from EOS's own
-    uv-managed venv, per its README) reliably produces `ModuleNotFoundError: No module named
-    'isaaclab'` here, regardless of conda_env/PYTHONPATH -- reproduced with EOS's REST API
-    end to end (task -> Heater actor -> this actor -> `ensure_app_launched()` -> `from
+    ROOT CAUSE, RE-VERIFIED (this note went back and forth once before landing here -- an
+    intermediate "CORRECTION" claiming the mechanism below was wrong turned out to itself be
+    wrong; trust THIS version, reproduced cleanly and directly): Ray's per-actor
+    `runtime_env={"conda": ...}` does NOT relocate this actor to a different Python
+    installation than the one that called `ray.init()`. The raylet bakes an ABSOLUTE path to
+    that Python (e.g. `.../eos/.venv/bin/python3`, confirmed by reading the live raylet
+    process's own `--python_worker_command` argument) into its worker-launch command at
+    startup; the "conda" plugin only wraps that fixed, already-resolved absolute path with a
+    `conda activate isaaclab &&` shell prefix. That prefix correctly sets CONDA_PREFIX/PATH
+    (confirmed via a live probe: an actor requesting `{"conda": "isaaclab"}` from a plain-venv
+    `eos start` driver reported `CONDA_PREFIX=.../envs/isaaclab` -- looks right) but its
+    `sys.executable` was STILL `.../eos/.venv/bin/python`, not isaaclab's -- an absolute path
+    is immune to PATH changes, so the actor never actually gains access to isaaclab's
+    site-packages. So a real `eos start` process (running from EOS's own uv-managed venv, per
+    its README) reliably produces `ModuleNotFoundError: No module named 'isaaclab'` here,
+    regardless of conda_env/PYTHONPATH -- reproduced twice, independently, with EOS's REST
+    API end to end (task -> Heater actor -> this actor -> `ensure_app_launched()` -> `from
     isaaclab.app import AppLauncher`).
 
-    CORRECTION, EMPIRICALLY VERIFIED: `runtime_env={"conda": <name>}` DOES relocate the actor
-    to that named conda env's own `bin/python` -- confirmed by probing `sys.executable`
-    inside a live actor requesting `{"conda": "isaaclab"}` from an `eos start` process
-    running under `eos-isaaclab`: it came back as
-    `.../miniconda3/envs/isaaclab/bin/python`, not the driver's `eos-isaaclab` python. That
-    means a hardcoded `conda_env="isaaclab"` default genuinely relocates every sim-mode
-    device call to the bare `isaaclab` env, which has isaacsim/isaaclab/matterix but NOT
-    `eos`'s own dependencies (e.g. `bofire`) -- and `resolve_matterix_call()` in
-    `protocol_registry.py` needs `eos.configuration.packages` (which imports `bofire`
-    transitively via `lab_def.py`) for `_discover_registrations()`. Net effect: every real
-    `eos start`-triggered sim task failed with `ModuleNotFoundError: No module named
-    'bofire'` *before Isaac Sim ever booted* (never even reached `AppLauncher`), regardless
-    of which package's device called `get_backend()` -- not specific to heater_transfer.
-    Fixed by making `conda_env` default to the driver's own `CONDA_DEFAULT_ENV` instead of a
-    hardcoded string, so requesting the "same" env is a genuine no-op instead of an
-    accidental relocation to a different, incompatible one.
+    A SEPARATE, real bug found and fixed along the way, worth keeping distinct from the
+    above: `_discover_registrations()` in `protocol_registry.py` (and `_discover_scene_
+    modules()` in `runtime.py`) used to import `eos.configuration.packages`, which pulls in
+    EOS's full entity/pydantic model tree as a side effect (`LabDef` -> `bofire`, an EOS
+    *optimizer* dependency, unrelated to package discovery) -- so even a correctly-relocated
+    actor sitting in a bare `isaaclab` conda env (no `eos`, no `bofire` installed there) would
+    fail with `ModuleNotFoundError: No module named 'bofire'` before ever reaching Isaac Sim.
+    FIXED: both now use a small local directory-walk (`runtime.py`'s
+    `_discover_user_package_dirs()`) instead of importing EOS's own discovery module -- see
+    that function's docstring. VERIFIED: a bare `isaaclab` conda env (isaacsim/isaaclab/
+    matterix/ray, no `eos`, no `bofire`) now runs scene discovery, device-twin resolution,
+    protocol/task resolution, and a full `run_workflow()` call successfully end to end, none
+    of which was true before this fix. This is real, standing progress -- it's just not
+    sufficient on its own to fix the ROOT CAUSE above, since that's a completely separate
+    problem (which Python the actor's process literally *is*, decided before any of this
+    module's code runs at all).
+
+    Also fixed alongside this: `conda_env`'s default used to be `os.environ.get(
+    "CONDA_DEFAULT_ENV", "isaaclab")`, intended to make requesting the "same" env a no-op
+    when the driver already has isaaclab. VERIFIED BROKEN on this machine: conda
+    auto-activates "base" for every shell (a common conda install default), so
+    CONDA_DEFAULT_ENV is *always* set -- to "base" -- regardless of whether isaaclab is
+    anywhere on the driver's actual sys.path, so the hardcoded "isaaclab" fallback never
+    actually triggered; a plain-venv `eos start` would request conda's irrelevant "base" env
+    instead of "isaaclab". FIXED: check `importlib.util.find_spec("isaaclab") is not None`
+    directly (locates the module via sys.path/finders, does not execute it -- safe pre-boot)
+    instead of trusting an env var name. If the driver can already import isaaclab, skip
+    "conda" in runtime_env entirely (the actor just inherits the driver's own environment,
+    whatever it's named); only fall back to the literal string "isaaclab" when it can't.
 
     FIX, VERIFIED WORKING: `eos start` itself must run from a Python that already has
     isaaclab/matterix_sm installed, so the raylet's baked-in worker command is correct from
@@ -151,27 +162,82 @@ def get_backend(scope_id: str, conda_env: str | None = None, num_gpus: int = 1):
     so re-verify (at least an AppLauncher boot + matterix/matterix_assets/matterix_tasks
     import) after any future `eos`, `isaaclab`, or `isaacsim` upgrade on either side.
 
+    REGRESSION FOUND AND FIXED IN THE CLONE, WORTH KNOWING ABOUT: after the above was
+    verified working, a *later* run against the same eos-isaaclab clone started failing
+    reliably (not flaky -- reproduced on two independent fresh actors) with
+    `AttributeError: 'Loop' object has no attribute '_stopping'` deep inside Isaac Sim's
+    own `omni.kit.async_engine`, during USD asset loading. Root cause: Ray installs
+    uvloop's event loop policy process-wide for an actor, on its own, whenever uvloop is
+    merely importable in that actor's environment -- confirmed live (a bare probe actor
+    reports `asyncio.get_event_loop_policy()` as a uvloop policy before any of this
+    module's code runs). `eos`'s own dependencies (litestar/uvicorn) pull in uvloop, so
+    once `pip install -e <eos repo>` puts them in the same env as isaaclab, every
+    `MatterixBackend` actor there inherits uvloop's policy -- and Isaac Sim's async_engine
+    assumes a stock CPython event loop (accesses private attributes like `_stopping`/
+    `_ready`/`_check_closed` uvloop's `Loop` doesn't have), so it crashes the moment it
+    touches asyncio. This is a materially different risk than the version-pin conflicts
+    listed above: it's runtime contamination between eos's dependency stack and Isaac
+    Sim's internals sharing one process, not a static import-time incompatibility, so it
+    can appear well after everything looked like it worked. FIXED in `runtime.py`'s
+    `ensure_app_launched()`: reset the event loop policy to the stdlib default there,
+    before `AppLauncher`/Isaac Sim's extension system ever gets a chance to touch asyncio.
+    VERIFIED: 3/3 clean runs after the fix (0/2 before it) via EOS's REST API, including
+    two back-to-back runs with the earlier actor explicitly killed in between.
+
     NOT YET DONE -- better long-term fix, noted for later: the clone above is a working
     stopgap, not the real fix, and it doesn't scale well -- every deployer has to rebuild
-    that same custom hybrid conda env, and re-verify it on every eos/isaaclab upgrade. The
-    root cause (Ray bakes in ONE Python at cluster boot) has a standard Ray answer that
-    doesn't require touching eos's own environment at all: run a SEPARATE `ray start
-    --address=<eos cluster address> --resources='{"isaaclab_gpu": 1}'` process from within
-    the isaaclab conda env, joining eos's cluster as an extra worker node, then have this
-    function request that resource (`options(resources={"isaaclab_gpu": 1}, ...)`) instead
-    of `runtime_env={"conda": ...}`. That keeps `eos start` exactly as documented in EOS's
-    README (plain uv venv, no isaaclab, no dependency conflicts) -- setup for a new deployer
-    becomes "start one extra process," not "rebuild a merged environment." Blocker: EOS's
-    own `ray.init(...)` in orchestrator.py currently starts an in-process/embedded cluster,
-    which isn't obviously reachable for an external node to join yet -- making it reachable
-    is a small change to EOS's own startup code, not just this bridge, and hasn't been
-    attempted.
+    that same custom hybrid conda env, re-verify it on every eos/isaaclab upgrade, AND
+    (per the regression above) stay alert to this whole class of runtime-contamination
+    bug, not just import-time version conflicts -- fixing the symptom each time it
+    surfaces isn't the same as eliminating the risk. The root cause (Ray bakes in ONE
+    Python at cluster boot) has a standard Ray answer that doesn't require touching eos's
+    own environment at all: run a SEPARATE `ray start --address=<eos cluster address>
+    --resources='{"isaaclab_gpu": 1}'` process from within the isaaclab conda env, joining
+    eos's cluster as an extra worker node, then have this function request that resource
+    (`options(resources={"isaaclab_gpu": 1}, ...)`) instead of `runtime_env={"conda":
+    ...}`. That keeps `eos start` exactly as documented in EOS's README (plain uv venv, no
+    isaaclab, no dependency conflicts, no shared process with Isaac Sim at all) -- setup
+    for a new deployer becomes "start one extra process," not "rebuild a merged
+    environment." Blocker: EOS's own `ray.init(...)` in orchestrator.py currently starts
+    an in-process/embedded cluster, which isn't obviously reachable for an external node
+    to join yet -- making it reachable is a small change to EOS's own startup code, not
+    just this bridge, and hasn't been attempted.
+
+    ALSO NOT YET DONE, separate issue: `get_backend()`'s actors are `lifetime="detached"`
+    and each distinct `scope_id` creates its own, so on a single-GPU machine a completed
+    (or even failed) run's actor permanently holds the only `num_gpus=1` claim -- a second
+    protocol run with a different scope_id will hang indefinitely in `PENDING_CREATION`,
+    not fail loudly, until the earlier actor is explicitly `ray.kill()`ed. VERIFIED live.
+    No fix attempted yet; worth deciding whether idle detached actors should be torn down
+    after some idle period, or whether `scope_id` should be coarser than one-per-protocol-
+    run on constrained hardware.
     """
+    runtime_env: dict[str, Any] = {}
     if conda_env is None:
-        # Default to the driver's own conda env, not a hardcoded name, so requesting the
-        # "same" env is a genuine no-op instead of an accidental relocation to a different,
-        # possibly incompatible one (see CORRECTION above).
-        conda_env = os.environ.get("CONDA_DEFAULT_ENV", "isaaclab")
+        # Only relocate if the driver's OWN process genuinely can't already reach
+        # isaaclab -- checked directly (can this process import isaaclab), not by reading
+        # CONDA_DEFAULT_ENV's name: that env var is set to "base" in every shell on this
+        # machine (conda auto-activates "base" on shell startup, a common conda install
+        # default) regardless of whether isaaclab is anywhere on this process's sys.path,
+        # so name-matching it never actually falls through to a real bare-isaaclab
+        # relocation -- it always requested conda's irrelevant "base" env instead, which
+        # has neither isaaclab nor eos. VERIFIED this was live and silent: `eos start`
+        # from EOS's own plain venv has CONDA_DEFAULT_ENV=base yet no isaaclab on its
+        # path, and the old `os.environ.get("CONDA_DEFAULT_ENV", "isaaclab")` logic would
+        # have targeted "base" instead of "isaaclab" every time, on this machine.
+        # find_spec() only locates the module (checks sys.path/finders), it does not
+        # execute isaaclab/__init__.py -- safe to call before Isaac Sim has booted.
+        import importlib.util
+
+        if importlib.util.find_spec("isaaclab") is None:
+            conda_env = "isaaclab"
+        # else: the driver can already import isaaclab itself (e.g. `eos start` launched
+        # from a conda env with isaaclab installed) -- leave conda_env unset and omit
+        # "conda" from runtime_env entirely below, so the actor simply inherits the
+        # driver's own environment instead of requesting a specific env by name (a no-op
+        # relocation without having to know or guess that env's name).
+    if conda_env is not None:
+        runtime_env["conda"] = conda_env
 
     env_vars = {"PYTHONPATH": _eos_path()}
     if "DISPLAY" in os.environ:
@@ -180,11 +246,12 @@ def get_backend(scope_id: str, conda_env: str | None = None, num_gpus: int = 1):
         # a real Isaac Sim window, e.g. for VNC-based verification) needs DISPLAY passed
         # through explicitly too, or it fails trying to open a display that isn't there.
         env_vars["DISPLAY"] = os.environ["DISPLAY"]
+    runtime_env["env_vars"] = env_vars
 
     return MatterixBackend.options(
         name=f"matterix_backend.{scope_id}",
         get_if_exists=True,
         lifetime="detached",
         num_gpus=num_gpus,
-        runtime_env={"conda": conda_env, "env_vars": env_vars},
+        runtime_env=runtime_env,
     ).remote()
