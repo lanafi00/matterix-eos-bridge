@@ -67,14 +67,25 @@ def register_protocol(protocol_type: str, gym_task_id: str, *, overwrite: bool =
 
 
 def register_task_workflow(
-    protocol_type: str, eos_task_name: str, workflow_key: str, *, overwrite: bool = False
+    protocol_type: str, eos_task_name: str, workflow_key: str | None = None, *, overwrite: bool = False
 ) -> None:
     """Bind one EOS DAG task node to the Matterix workflow key that executes it.
+
+    workflow_key defaults to eos_task_name when omitted -- the common case (this repo's
+    own matterix_registrations.py needs it explicit for only 1 of its 9 registrations;
+    the rest use the same name on both sides). This is a convenience default the caller
+    opts into by leaving the argument out, not a silent naming-convention fallback: the
+    module docstring's "why explicit mappings" reasoning still holds -- if you never call
+    register_task_workflow() for a given task at all, resolve_matterix_call() still
+    raises KeyError rather than guessing. Pass workflow_key explicitly only when the
+    Matterix workflow key genuinely differs from the EOS task name.
 
     Same overwrite semantics as `register_protocol()`. `protocol_type` doesn't need to
     already be registered via `register_protocol()` at call time -- the two registries
     are independent dicts, only joined together inside `resolve_matterix_call()`.
     """
+    if workflow_key is None:
+        workflow_key = eos_task_name
     key = (protocol_type, eos_task_name)
     existing = TASK_WORKFLOWS.get(key)
     if existing is not None and existing != workflow_key and not overwrite:
