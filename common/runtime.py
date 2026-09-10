@@ -1,14 +1,12 @@
 """Programmatic entry point for running Matterix workflows.
 
-Relocated here from matterix-experiments/runtime.py so matterix_bridge (and by extension
-EOS) has no functional dependency on that sandbox repo -- see MatterixBackend.run_workflow
-in matterix_backend.py, the actual EOS-facing caller. The reason this needs to be its own
-module rather than "just call main() from a CLI script": Isaac Sim's `SimulationApp` must
-be constructed exactly once per process, before any `isaaclab`/`omni` submodule is
-imported (Kit's extension/runtime plugin system requires it) - see
-`ensure_app_launched()` below. That boot is also expensive (~5-10s), so this module keeps
-it - and the current gym environment - alive across calls instead of paying that cost on
-every workflow invocation.
+See MatterixBackend.run_workflow in matterix_backend.py, the actual EOS-facing caller.
+This needs to be its own module rather than "just call main() from a CLI script" because
+Isaac Sim's `SimulationApp` must be constructed exactly once per process, before any
+`isaaclab`/`omni` submodule is imported (Kit's extension/runtime plugin system requires
+it) - see `ensure_app_launched()` below. That boot is also expensive (~5-10s), so this
+module keeps it - and the current gym environment - alive across calls instead of paying
+that cost on every workflow invocation.
 
 Typical usage from a long-lived worker process:
 
@@ -63,18 +61,16 @@ _current_env_cfg = None
 def _eos_path() -> str:
     """The sys.path entry that made `user.matterix_bridge` importable in *this* process --
     walked up from this file's own on-disk location (common/runtime.py -> common ->
-    matterix_bridge -> user -> EOS_PATH) instead of reading a separately-set env var, so
-    it's correct regardless of how the caller's sys.path got EOS_PATH onto it (manual
-    sys.path.insert, PYTHONPATH, EOS's own package loader, ...).
+    matterix_bridge -> user -> EOS_PATH), so it's correct regardless of how the caller's
+    sys.path actually got EOS_PATH onto it.
 
-    Deliberately uses `os.path.abspath`, not `Path.resolve()`/`os.path.realpath` -- this
-    package is loaded through a symlink (`eos/user/matterix_bridge -> .../matterix-eos-
-    bridge`), and resolving that symlink away would walk up from the *real* on-disk repo
-    instead of from `eos/user/matterix_bridge`, landing one directory short of EOS_PATH.
-    `abspath` normalizes the path without touching symlinks, so the `eos/user/` segment
-    from how this module was actually imported is preserved.
+    Uses `os.path.abspath`, not `Path.resolve()`/`os.path.realpath`: this package is
+    loaded through a symlink (`eos/user/matterix_bridge -> .../matterix-eos-bridge`), and
+    resolving that symlink away would walk up from the real on-disk repo instead, landing
+    one directory short. `abspath` normalizes without touching symlinks, preserving the
+    `eos/user/` segment.
 
-    Used by `_discover_scene_modules()` below to find EOS's `user/` directory, and by
+    Used by `_discover_scene_modules()` to find EOS's `user/` directory, and by
     `matterix_backend.py`'s `get_backend()` to forward PYTHONPATH to a runtime_env-scoped
     Ray actor that doesn't inherit this process's in-memory sys.path.
     """
@@ -85,26 +81,20 @@ def _discover_user_package_dirs(user_dir) -> list:
     """Find every EOS package directory (one containing a `pyproject.toml`) under `user_dir`.
 
     A minimal reimplementation of `eos.configuration.packages.discover_packages()`'s
-    directory walk -- deliberately NOT importing that module. `from
-    eos.configuration.packages import discover_packages` pulls in EOS's entire
-    entity/pydantic model tree as a side effect of import (`LabDef` imports `bofire`, an
-    EOS *optimizer* dependency, wholly unrelated to finding files by name), which this
-    process may not have: `get_backend()` in matterix_backend.py can relocate the calling
-    actor (via `runtime_env={"conda": ...}`) to a conda env that has isaaclab/matterix but
-    not `eos` itself. VERIFIED: importing `eos.configuration.packages` from a bare
-    `isaaclab` conda env (isaacsim/isaaclab/matterix/ray, no `eos`) fails with
-    `ModuleNotFoundError: No module named 'bofire'` -- before Isaac Sim ever boots,
-    regardless of which package's device called `get_backend()`. Avoiding that import
-    here is what lets that env stay bare (no `eos`, no dependency conflicts with
-    isaaclab/isaacsim's own pins) instead of needing `eos` installed alongside isaaclab.
+    directory walk -- deliberately NOT importing that module. `eos.configuration.packages`
+    pulls in EOS's full entity/pydantic model tree as a side effect (`LabDef` -> `bofire`,
+    an EOS *optimizer* dep, unrelated to finding files by name), which this process may
+    not have: `get_backend()` in matterix_backend.py can relocate the calling actor to a
+    conda env with isaaclab/matterix but not `eos`. Importing the real discovery module
+    there fails with `ModuleNotFoundError: No module named 'bofire'` before Isaac Sim ever
+    boots. Avoiding that import is what lets that env stay bare, with no `eos` and no
+    dependency conflicts against isaaclab/isaacsim's own pins.
 
-    Same discovery rule as the real one: a directory counts once it contains a
-    `pyproject.toml`; its own subdirectories aren't searched further (a package can't
-    nest another package inside it). Does NOT replicate `discover_packages()`'s
-    duplicate-package-name detection -- this is only used to *find* files by a fixed
-    name (`scenes/__init__.py`, `matterix_registrations.py`), not to resolve labs/devices/
-    tasks/protocols by name the way EOS's own loader does, so a same-named-package clash
-    isn't a concern this function needs to catch.
+    Same rule as the real one: a directory counts once it has a `pyproject.toml`; its
+    subdirectories aren't searched further. Does NOT replicate duplicate-package-name
+    detection -- this only *finds* files by a fixed name (`scenes/__init__.py`,
+    `matterix_registrations.py`), it doesn't resolve labs/devices/tasks/protocols by name
+    the way EOS's own loader does, so a name clash isn't a concern here.
     """
     from pathlib import Path
 
@@ -157,19 +147,14 @@ def ensure_app_launched(headless: bool = True, device: str = "cuda:0", enable_ca
     if _simulation_app is not None:
         return
 
-    # Ray installs uvloop's event loop policy process-wide for actors, on its own,
-    # whenever uvloop is merely importable in the environment -- confirmed live: a bare
-    # ray.remote actor reports asyncio.get_event_loop_policy() as a uvloop policy before
-    # any of this module's code runs, purely because `eos`'s own dependencies (litestar/
-    # uvicorn) pull in uvloop, e.g. in the "clone eos's own deps into an isaaclab conda
-    # env" deployment (see matterix_backend.py's get_backend() docstring). Isaac Sim's
-    # own `omni.kit.async_engine` assumes a stock CPython event loop (accesses private
-    # attributes like `_stopping`/`_ready`/`_check_closed` uvloop's Loop doesn't have),
-    # so it crashes deep inside USD asset loading the moment it touches asyncio --
-    # confirmed reproducible, not flaky, on two independent fresh actors. Reset to the
-    # stdlib default here, before AppLauncher (and Isaac Sim's extension system) ever
-    # gets a chance to touch asyncio -- resetting later, e.g. inside run_workflow(),
-    # would be too late since AppLauncher's own construction already triggers it.
+    # Ray installs uvloop's event loop policy process-wide the moment uvloop is merely
+    # importable -- and it is here, since `eos`'s deps (litestar/uvicorn) pull it in (see
+    # get_backend()'s docstring on the eos-isaaclab env). Isaac Sim's own
+    # omni.kit.async_engine assumes a stock CPython event loop (touches private attrs
+    # like `_stopping`/`_ready` uvloop's Loop doesn't have) and crashes the moment it
+    # touches asyncio. Reset to the stdlib default here, before AppLauncher gets a chance
+    # to touch asyncio -- doing this later (e.g. inside run_workflow()) is too late, since
+    # AppLauncher's own construction already triggers it.
     import asyncio
 
     asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
@@ -178,6 +163,16 @@ def ensure_app_launched(headless: bool = True, device: str = "cuda:0", enable_ca
 
     _app_launcher = AppLauncher(headless=headless, device=device, enable_cameras=enable_cameras)
     _simulation_app = _app_launcher.app
+
+    # Kit extensions that are only loaded in windowed mode (e.g.
+    # omni.kit.viewport.menubar.camera) schedule async callbacks through
+    # omni.kit.async_engine's MainEventLoopWrapper, which only gets a live event loop
+    # after the app's own update loop has run at least once. Building a stage/physics
+    # scene before that (e.g. inside gym.make()) hits `g_main_event_loop=None` and
+    # crashes with `AttributeError: 'NoneType' object has no attribute 'create_task'`
+    # the first time such an extension reacts to a USD change. One update() call lets
+    # Kit finish its startup extension queue before anything else touches the stage.
+    _simulation_app.update()
 
 
 def is_app_launched() -> bool:
@@ -209,6 +204,7 @@ class WorkflowResult:
     """True if the action sequence succeeded on every env in the final episode."""
     per_env_success: list[bool]
     video_path: str | None = None
+    failure_detail: list[dict] | None = None
 
 
 def _get_env(
@@ -245,15 +241,11 @@ def _get_env(
 
         env_cfg = parse_env_cfg(task, device=device, num_envs=num_envs, use_fabric=use_fabric)
 
-        # Matterix's setup_recorder() only scopes the HDF5 dataset recorder's output path
-        # off `record_path` when it's set (matterix_base_env.py) -- left None (the default),
-        # every environment on the machine writes to the same hardcoded
-        # /tmp/isaaclab/logs/dataset.hdf5 (see isaaclab's RecorderManagerBaseCfg). VERIFIED:
-        # any second live environment of the same task -- a different scope_id's
-        # MatterixBackend actor, or even an earlier stage's env in this same process that
-        # was never closed -- then hits `BlockingIOError: unable to lock file` the moment it
-        # tries to create that same file. Scope it per process so concurrent scope_ids (the
-        # whole point of get_backend(scope_id)) don't collide.
+        # record_path defaults to a hardcoded /tmp/isaaclab/logs/dataset.hdf5 shared by
+        # every environment on the machine (isaaclab's RecorderManagerBaseCfg) -- a second
+        # live environment of the same task (a different scope_id's actor, or an earlier
+        # unclosed stage) hits `BlockingIOError: unable to lock file` on that same path.
+        # Scope it per process so concurrent scope_ids don't collide.
         env_cfg.record_path = f"/tmp/isaaclab/logs/matterix_bridge/pid{os.getpid()}/dataset.hdf5"
 
         for slot, (lab_name, device_name) in (devices or {}).items():
@@ -408,19 +400,13 @@ def run_workflow(
                 if action is not None:
                     action = action.to(env.device)
                 else:
-                    # A workflow with no agent actions at all (e.g. TurnOnHeaterCfg, a
-                    # pure semantic/equipment action with no agent_assets) leaves
-                    # matterix_sm's "hold current pose" fallback uninitialized -- it only
-                    # scopes to agents referenced in THIS action sequence, not the
-                    # scene's full action space (see Matterix's state_machine.py step()),
-                    # so sm.step() legitimately returns None even though env.step() still
-                    # needs a valid action tensor for whatever agents the scene has. We
-                    # don't own Matterix, so rather than patch that scoping bug upstream,
-                    # reuse the environment's own currently-cached action -- isaaclab's
-                    # ActionManager keeps a correctly-shaped, zero-initialized-by-default
-                    # buffer (env.action_manager.action) precisely for this "nothing new
-                    # to apply" case. This is isaaclab's own standard state, not a value
-                    # we're guessing at.
+                    # A pure semantic/equipment workflow (e.g. TurnOnHeaterCfg, no
+                    # agent_assets) makes sm.step() return None -- matterix_sm's action
+                    # only covers agents referenced in the sequence, not the scene's full
+                    # action space. env.step() still needs a valid tensor for whatever
+                    # agents the scene has, so fall back to isaaclab's own
+                    # zero-initialized action buffer (env.action_manager.action) rather
+                    # than patching this scoping gap in Matterix itself.
                     action = env.action_manager.action
                 obs, _, terminated, truncated, _ = env.step(action, semantic_actions=semantic_actions)
                 step_count += 1
@@ -444,6 +430,8 @@ def run_workflow(
                 env.save_video(video_path)
                 if print_progress:
                     print(f"[INFO]: Video saved to {video_path}")
+        #get the list of failed steps and their details
+        failed_list = [item for item in sm.get_status() if item["status"] == "failed"]
 
     return WorkflowResult(
         task=task,
@@ -453,6 +441,7 @@ def run_workflow(
         success=bool(per_env_success.all().item()),
         per_env_success=per_env_success.tolist(),
         video_path=video_path,
+        failure_detail=failed_list
     )
 
 

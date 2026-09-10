@@ -51,7 +51,9 @@ class Heater(BaseDevice):
             # or e.g. 75 would be read as 75K (~-198C) instead of 348.15K.
             target_kelvin = target_temperature + 273.15
             ray.get(backend.set_parameter.remote(protocol_type, eos_task_name, "target_temperature", target_kelvin))
-            ray.get(backend.run_workflow.remote(protocol_type, eos_task_name, headless=headless))
+            result = ray.get(backend.run_workflow.remote(protocol_type, eos_task_name, headless=headless))
+            if not result.success:
+                raise RuntimeError(f"Failed to run workflow {protocol_type}/{eos_task_name}: {result.failure_detail}")
         else:
             pass  # TODO: self._client.send_command("heat", {"target_temperature": target_temperature})
 
