@@ -26,18 +26,16 @@ class Heater(BaseDevice):
         sample: Resource,
         target_temperature: float,
         protocol_run_name: str,
-        protocol_type: str,
         eos_task_name: str,
         headless: bool = True,
     ) -> Resource:
-        """protocol_run_name/protocol_type/eos_task_name must come from the calling task
+        """protocol_run_name/eos_task_name must come from the calling task
         (self._protocol_run_name, self._task_name on BaseTask) -- a device has no way to
-        know which protocol run or DAG task it's being called from on its own.
-
-        protocol_type specifically isn't exposed by BaseTask today (only
-        protocol_run_name, an instance id, and task_name are) -- the calling task.py needs
-        to supply it explicitly, e.g. hardcoded as a parameter in this task's protocol.yml,
-        since the protocol author already knows their own protocol's type at authoring time.
+        know which protocol run or DAG task it's being called from on its own. No
+        protocol_type needed: run_matterix_workflow() resolves the Matterix workflow from
+        eos_task_name alone (see its docstring for when a task name is ambiguous enough
+        to need one anyway -- not the case here, "turn_on_heater" is only ever registered
+        under heater_transfer_protocol).
 
         headless only takes effect on the first run_workflow() call in this scope's
         MatterixBackend process (Isaac Sim can't be reconfigured after boot).
@@ -49,7 +47,6 @@ class Heater(BaseDevice):
             target_kelvin = target_temperature + 273.15
             run_matterix_workflow(
                 protocol_run_name,
-                protocol_type,
                 eos_task_name,
                 headless=headless,
                 target_temperature=target_kelvin,

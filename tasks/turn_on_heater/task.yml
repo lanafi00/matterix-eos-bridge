@@ -18,15 +18,6 @@ input_parameters:
     max: 150.0
     desc: Target temperature for the heater
 
-  matterix_protocol_type:
-    type: str
-    value: heater_transfer_protocol
-    desc: >
-      The EOS protocol type string used to resolve this task's Matterix workflow (see
-      protocol_registry.py). BaseTask doesn't expose protocol_type on its own (only
-      protocol_run_name, an instance id, and task_name), so it's threaded through here
-      as a fixed parameter the protocol author sets, not something dynamic.
-
   headless:
     type: bool
     value: true
