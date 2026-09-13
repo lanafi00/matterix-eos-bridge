@@ -42,6 +42,10 @@ entries are meant to be reached through this registry.
 
 from __future__ import annotations
 
+# Populated lazily -- reading these directly before anything has triggered
+# _discover_registrations() (see resolve_matterix_call() below) shows an empty dict with
+# no hint why. Use get_protocol_twins()/get_task_workflows() instead if you just want to
+# inspect what's registered.
 PROTOCOL_TWINS: dict[str, str] = {}
 TASK_WORKFLOWS: dict[tuple[str, str], str] = {}
 
