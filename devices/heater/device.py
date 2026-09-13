@@ -1,11 +1,9 @@
 from typing import Any
 
-import ray
-
 from eos.devices.base_device import BaseDevice
 from eos.resources.entities.resource import Resource
 
-from user.matterix_bridge.common.matterix_backend import get_backend
+from user.matterix_bridge.common.matterix_backend import run_matterix_workflow
 
 
 class Heater(BaseDevice):
@@ -45,15 +43,17 @@ class Heater(BaseDevice):
         MatterixBackend process (Isaac Sim can't be reconfigured after boot).
         """
         if self._backend_mode == "sim":
-            backend = get_backend(protocol_run_name)
             # TurnOnHeaterCfg.target_temperature is in Kelvin; this device's target_temperature
             # is authored in Celsius (matches heat_sample/task.yml's `unit: celsius`) -- convert,
             # or e.g. 75 would be read as 75K (~-198C) instead of 348.15K.
             target_kelvin = target_temperature + 273.15
-            ray.get(backend.set_parameter.remote(protocol_type, eos_task_name, "target_temperature", target_kelvin))
-            result = ray.get(backend.run_workflow.remote(protocol_type, eos_task_name, headless=headless))
-            if not result.success:
-                raise RuntimeError(f"Failed to run workflow {protocol_type}/{eos_task_name}: {result.failure_detail}")
+            run_matterix_workflow(
+                protocol_run_name,
+                protocol_type,
+                eos_task_name,
+                headless=headless,
+                target_temperature=target_kelvin,
+            )
         else:
             pass  # TODO: self._client.send_command("heat", {"target_temperature": target_temperature})
 
