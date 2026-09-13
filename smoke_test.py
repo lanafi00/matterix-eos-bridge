@@ -87,8 +87,65 @@ except Exception as e:
     fail("protocol_registry import/resolution failed", e)
 
 
-# --- Stage 2: the workflow_overrides mechanism -- the actual point of this session's work.
-stage("Stage 2: workflow_overrides actually reaches TurnOnHeaterCfg.target_temperature")
+# --- Stage 2: resolve_matterix_call_by_task_name -- the no-protocol_type-needed path
+# devices actually use now (see run_matterix_workflow()/Heater.heat_to()). Covers both
+# the common unambiguous case and the genuinely-ambiguous case, which should fail loudly
+# naming every colliding protocol rather than silently picking one.
+stage("Stage 2: protocol_registry.resolve_matterix_call_by_task_name")
+try:
+    from user.matterix_bridge.common.protocol_registry import resolve_matterix_call_by_task_name
+
+    task, workflow = resolve_matterix_call_by_task_name("turn_on_heater")
+    expected = ("Matterix-Experiment-Heater-Transfer-Franka-v1", "turn_on_heater")
+    assert (task, workflow) == expected, f"got {(task, workflow)}, expected {expected}"
+    ok(f"resolved 'turn_on_heater' unambiguously to {(task, workflow)}, no protocol_type needed")
+
+    try:
+        resolve_matterix_call_by_task_name("pick_beaker")
+        fail("expected ValueError for ambiguous task name 'pick_beaker', got none")
+    except ValueError as e:
+        # "pick_beaker" is genuinely registered under beaker_pick_protocol,
+        # pick_and_place_protocol, AND heater_transfer_protocol with two different
+        # results -- confirm the error actually names the collision, not just that
+        # *a* ValueError happened.
+        msg = str(e)
+        assert "beaker_pick_protocol" in msg and "heater_transfer_protocol" in msg, (
+            f"ValueError didn't name the colliding protocols: {msg}"
+        )
+        ok("ValueError correctly raised for ambiguous 'pick_beaker', naming the colliding protocols")
+
+    try:
+        resolve_matterix_call_by_task_name("no_such_task_at_all")
+        fail("expected KeyError for a task name registered under no protocol, got none")
+    except KeyError:
+        ok("KeyError correctly raised for a task name registered under no protocol")
+except Exception as e:
+    fail("resolve_matterix_call_by_task_name failed", e)
+
+
+# --- Stage 3: registry introspection helpers force discovery instead of silently showing
+# an empty dict to anyone who inspects PROTOCOL_TWINS/TASK_WORKFLOWS before the first real
+# resolution has triggered _discover_registrations().
+stage("Stage 3: get_protocol_twins()/get_task_workflows() force discovery")
+try:
+    from user.matterix_bridge.common.protocol_registry import get_protocol_twins, get_task_workflows
+
+    twins = get_protocol_twins()
+    workflows = get_task_workflows()
+    assert "heater_transfer_protocol" in twins, f"expected heater_transfer_protocol in {twins}"
+    assert ("heater_transfer_protocol", "turn_on_heater") in workflows, (
+        f"expected ('heater_transfer_protocol', 'turn_on_heater') in {workflows}"
+    )
+    ok(
+        f"get_protocol_twins() returned {len(twins)} protocol(s), "
+        f"get_task_workflows() returned {len(workflows)} task(s)"
+    )
+except Exception as e:
+    fail("registry introspection helpers failed", e)
+
+
+# --- Stage 4: the workflow_overrides mechanism -- the actual point of an earlier session's work.
+stage("Stage 4: workflow_overrides actually reaches TurnOnHeaterCfg.target_temperature")
 try:
     import user.matterix_bridge.common.runtime as rt
 
@@ -114,7 +171,7 @@ except Exception as e:
 
 
 # --- Stage 3: workflow_overrides error paths.
-stage("Stage 3: workflow_overrides error paths")
+stage("Stage 5: workflow_overrides error paths")
 try:
     try:
         run_workflow(
@@ -132,7 +189,7 @@ except Exception as e:
 
 
 # --- Stage 4: device_registry.py resolves correctly (direct sibling import now, no shim).
-stage("Stage 4: device_registry.resolve_device_twin")
+stage("Stage 6: device_registry.resolve_device_twin")
 try:
     from user.matterix_bridge.common.device_registry import resolve_device_twin
     from matterix_assets.robots import FRANKA_PANDA_HIGH_PD_IK_CFG
@@ -151,8 +208,8 @@ except Exception as e:
     fail("device_registry resolution failed", e)
 
 
-# --- Stage 5: the MatterixBackend Ray actor, end to end.
-stage("Stage 5: MatterixBackend actor (get_backend, set_parameter, run_workflow)")
+# --- Stage 7: the MatterixBackend Ray actor, end to end.
+stage("Stage 7: MatterixBackend actor (get_backend, set_parameter, run_workflow)")
 try:
     import ray
 
@@ -178,6 +235,39 @@ try:
     # later EOS task in the same protocol run (a different Ray worker) reconnects correctly.
 except Exception as e:
     fail("MatterixBackend actor test failed", e)
+
+
+# --- Stage 8: set_parameters() (plural, batched) and run_matterix_workflow() (the
+# get_backend/set_parameters/run_workflow/check-success wrapper device.py actually calls)
+# -- neither was exercised above, and both are what a real device driver uses now, with
+# protocol_type omitted (None), the same no-protocol_type-needed path Stage 2 covers.
+# Reuses Stage 7's "smoke_test_scope" (not a new scope_id) -- MatterixBackend actors are
+# lifetime="detached" and each distinct scope_id claims its own num_gpus=1, so a second
+# scope here would compete with Stage 7's still-alive actor for this machine's one GPU
+# and hang in PENDING_CREATION rather than fail loudly (the idle-timeout sweep only frees
+# actors idle 15+ minutes, nowhere near this script's runtime).
+stage("Stage 8: set_parameters() batch setter and run_matterix_workflow() helper")
+try:
+    from user.matterix_bridge.common.matterix_backend import run_matterix_workflow
+
+    # Two fields in one call -- confirms set_parameters() (not just set_parameter())
+    # actually gets exercised, and that protocol_type=None resolves correctly through
+    # the real Ray actor, not just the bare protocol_registry functions Stage 2 tested.
+    result = run_matterix_workflow(
+        "smoke_test_scope",
+        "turn_on_heater",
+        headless=True,
+        target_temperature=320.0,
+    )
+    ok(f"run_matterix_workflow() completed with protocol_type omitted: success={result.success}")
+
+    try:
+        run_matterix_workflow("smoke_test_scope", "no_such_task_at_all", headless=True)
+        fail("expected KeyError for an unregistered task name, got none")
+    except KeyError:
+        ok("KeyError correctly propagated through run_matterix_workflow() for an unregistered task name")
+except Exception as e:
+    fail("run_matterix_workflow()/set_parameters() test failed", e)
 
 
 print(f"\n{'=' * 70}\nALL STAGES PASSED\n{'=' * 70}")
