@@ -19,5 +19,4 @@ tasks:
         resource_type: sample_vial
     parameters:
       target_temperature: eos_dynamic
-      matterix_protocol_type: heater_transfer_protocol
     dependencies: []

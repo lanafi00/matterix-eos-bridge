@@ -126,12 +126,42 @@ def _discover_registrations() -> None:
             importlib.import_module(f"user.{package_dir.name}.matterix_registrations")
 
 
+def get_protocol_twins() -> dict[str, str]:
+    """The current `PROTOCOL_TWINS` mapping, forcing registration discovery first.
+
+    Use this (not the bare `PROTOCOL_TWINS` module attribute) if you want to inspect
+    what's registered -- `PROTOCOL_TWINS` only gets populated lazily, the first time
+    `resolve_matterix_call()`/`resolve_matterix_call_by_task_name()` runs in this
+    process, so reading it directly before that can silently show an empty dict with no
+    hint why. Returns the live dict, not a copy -- treat it as read-only.
+    """
+    _discover_registrations()
+    return PROTOCOL_TWINS
+
+
+def get_task_workflows() -> dict[tuple[str, str], str]:
+    """The current `TASK_WORKFLOWS` mapping, forcing registration discovery first -- see
+    `get_protocol_twins()`'s docstring for why this exists instead of reading
+    `TASK_WORKFLOWS` directly. Returns the live dict, not a copy -- treat it as read-only.
+    """
+    _discover_registrations()
+    return TASK_WORKFLOWS
+
+
 def resolve_matterix_call(protocol_type: str, eos_task_name: str) -> tuple[str, str]:
     """Resolve an EOS `(protocol_type, task_name)` pair to a Matterix `(task, workflow)` pair.
 
     Raises KeyError naming the offending side rather than silently mismatching, so a
     rename on either side of the EOS/Matterix boundary is caught immediately instead of
     resolving to the wrong (or a stale) workflow.
+
+    Most callers don't actually need to supply `protocol_type` -- see
+    `resolve_matterix_call_by_task_name()`, which resolves from `eos_task_name` alone
+    whenever that's unambiguous (the common case) and only requires disambiguation when
+    it genuinely isn't. Use this function directly only when you already know
+    `protocol_type` and want the registry to double-check it (e.g. inside
+    `MatterixBackend`, which already has it because `run_matterix_workflow()`'s caller
+    supplied it).
     """
     _discover_registrations()
     if protocol_type not in PROTOCOL_TWINS:
@@ -146,3 +176,53 @@ def resolve_matterix_call(protocol_type: str, eos_task_name: str) -> tuple[str, 
             "register_task_workflow() for it (see matterix_bridge/common/protocol_registry.py)."
         )
     return PROTOCOL_TWINS[protocol_type], TASK_WORKFLOWS[key]
+
+
+def resolve_matterix_call_by_task_name(eos_task_name: str) -> tuple[str, str]:
+    """Resolve a Matterix `(task, workflow)` pair from JUST an EOS task name, without
+    needing its `protocol_type`.
+
+    This exists because `protocol_type` isn't actually something a device driver can get
+    for free: `BaseTask` only exposes `protocol_run_name` (a run instance id) and
+    `task_name` to a task, not the protocol's own type string, so getting `protocol_type`
+    into a device call has historically meant threading it through as a redundant,
+    hand-maintained task parameter (e.g. a `matterix_protocol_type` value in `task.yml`,
+    restating what `protocol.yml`'s own `type:` field already says) -- copy a
+    protocol.yml+task.yml pair to start a new protocol, forget to update that one nested
+    value, and it silently resolves against the wrong (or a stale) protocol's
+    registrations. Most EOS task names are unique across every registered protocol, so
+    there's usually no real ambiguity to resolve in the first place -- this function
+    finds that out for you instead of asking the caller to know a fact they don't have.
+
+    Raises KeyError if `eos_task_name` isn't registered under any protocol at all.
+    Raises ValueError, naming every colliding protocol_type, if `eos_task_name` IS
+    registered under two or more protocols that resolve to DIFFERENT `(gym_task_id,
+    workflow_key)` pairs -- genuinely ambiguous without knowing which protocol is
+    calling. That's the one case where you still need `resolve_matterix_call(
+    protocol_type, eos_task_name)` and a real `protocol_type` for that specific task --
+    everything else can drop it.
+    """
+    _discover_registrations()
+    candidates: dict[tuple[str, str], list[str]] = {}
+    for (protocol_type, task_name), workflow_key in TASK_WORKFLOWS.items():
+        if task_name != eos_task_name:
+            continue
+        gym_task_id = PROTOCOL_TWINS.get(protocol_type)
+        if gym_task_id is None:
+            continue  # registered task, but its protocol_type was never registered -- not a candidate.
+        candidates.setdefault((gym_task_id, workflow_key), []).append(protocol_type)
+
+    if not candidates:
+        raise KeyError(
+            f"No Matterix workflow registered for EOS task {eos_task_name!r} under any "
+            "protocol. Call register_task_workflow() for it (see "
+            "matterix_bridge/common/protocol_registry.py)."
+        )
+    if len(candidates) > 1:
+        detail = "; ".join(f"{result!r} via protocol(s) {ptypes}" for result, ptypes in candidates.items())
+        raise ValueError(
+            f"EOS task {eos_task_name!r} resolves ambiguously across protocols: {detail}. "
+            "Call resolve_matterix_call(protocol_type, eos_task_name) explicitly for this "
+            "task instead, with a real protocol_type."
+        )
+    return next(iter(candidates))
