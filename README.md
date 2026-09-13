@@ -73,17 +73,19 @@ You don't need to touch this repo. Your package just imports it.
 3. **Device driver.** In `<your_package>/devices/<type>/device.py`:
 
    ```python
-   import ray
    from eos.devices.base_device import BaseDevice
-   from user.matterix_bridge.common.matterix_backend import get_backend
+   from user.matterix_bridge.common.matterix_backend import run_matterix_workflow
 
    class DeviceName(BaseDevice):
        def device_action(self, sample, target_value, protocol_run_name, protocol_type, eos_task_name, headless=True):
            if self._backend_mode == "sim":
-               backend = get_backend(protocol_run_name)
-               ray.get(backend.set_parameter.remote(protocol_type, eos_task_name, "target_value", target_value))
-               ray.get(backend.run_workflow.remote(protocol_type, eos_task_name, headless=headless))
+               run_matterix_workflow(
+                   protocol_run_name, protocol_type, eos_task_name,
+                   headless=headless, target_value=target_value,
+               )
    ```
+
+   `run_matterix_workflow()` wraps the get-backend / push-parameters / run-workflow / check-success sequence into one call -- pass any dynamic parameters as keyword args (matching their `TurnOnHeaterCfg`-style field names), or omit them entirely for a workflow with none. It raises `RuntimeError` if the workflow didn't succeed, so you don't need to check a result yourself unless you want the returned `WorkflowResult` for something (e.g. `video_path`).
 
 4. **Register a device twin, only if your device fills an articulated-asset slot more than one physical robot could occupy.** Most devices skip this. Goes in the same `scenes/__init__.py` from step 1.
 
