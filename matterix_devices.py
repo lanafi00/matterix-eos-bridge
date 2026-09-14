@@ -23,14 +23,20 @@ need a custom scene yourself for this to work; matterix_bridge's own exp1-4 scen
 that requirement on every package's behalf.
 
 This is where any package -- including one that isn't this one -- registers its own
-catalog assets/device twins. What follows is this package's own example: a placeholder
-Franka arm, not a real device.
+catalog assets/device twins.
+
+What follows is this package's own catalog: every asset Matterix currently ships
+(`discover_matterix_assets()` -- robots, equipment, labware, infrastructure), registered
+in bulk rather than named one at a time, so a new Matterix asset shows up here for free
+on the next boot instead of needing this file edited. Only ONE of them (the Franka arm
+used by this repo's own exp1-4 scenes) is actually bound to a device twin below -- being
+in the catalog just means "this is a real, resolvable asset," not "something uses it."
 """
 
-from matterix_assets.robots import FRANKA_PANDA_HIGH_PD_IK_CFG
-
-from user.matterix_bridge.common.asset_catalog import register_catalog_asset
+from user.matterix_bridge.common.asset_catalog import discover_matterix_assets, register_catalog_asset
 from user.matterix_bridge.common.device_registry import register_device_twin
 
-register_catalog_asset("robots/franka_panda_high_pd_ik", FRANKA_PANDA_HIGH_PD_IK_CFG)
+for _catalog_path, _cfg_class in discover_matterix_assets().items():
+    register_catalog_asset(_catalog_path, _cfg_class)
+
 register_device_twin("example_lab", "franka_01", "robots/franka_panda_high_pd_ik")
