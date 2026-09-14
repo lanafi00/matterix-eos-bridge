@@ -143,14 +143,14 @@ def _discover_scene_modules() -> None:
 def _discover_device_registrations() -> None:
     """Import every EOS package's `matterix_devices.py`, if it has one.
 
-    Registers that package's catalog assets (`asset_catalog.py`) and device twins
-    (`device_registry.py`) as a side effect of import -- a dedicated file, deliberately
-    NOT `scenes/__init__.py`: which devices/assets physically exist shouldn't be coupled
-    to which scene file happens to import them. This mirrors `matterix_registrations.py`'s
-    convention (a plain file at a package's root, auto-discovered by name) but runs
-    post-boot instead of pre-boot, since registering a catalog asset needs to instantiate
-    a real `matterix_assets` class and check its USD path via `isaaclab.utils.assets`,
-    both of which require Isaac Sim already running (see `asset_catalog.py`'s docstring).
+    Registers that package's device twins (`device_registry.py`) as a side effect of
+    import -- a dedicated file, deliberately NOT `scenes/__init__.py`: which devices
+    physically exist shouldn't be coupled to which scene file happens to import them.
+    This mirrors `matterix_registrations.py`'s convention (a plain file at a package's
+    root, auto-discovered by name) but runs post-boot instead of pre-boot, since
+    registering a device twin needs to instantiate a real `matterix_assets` class and
+    check its USD path via `isaaclab.utils.assets`, both of which require Isaac Sim
+    already running (see `matterix_asset_types.py`'s docstring).
 
     Called AFTER `_discover_scene_modules()` in `_get_env()`, even though devices are
     conceptually independent of scenes -- forced by a matterix_assets-internal circular
