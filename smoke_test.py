@@ -188,8 +188,51 @@ except Exception as e:
     fail("error-path check itself failed", e)
 
 
-# --- Stage 4: device_registry.py resolves correctly (direct sibling import now, no shim).
-stage("Stage 6: device_registry.resolve_device_twin")
+# --- Stage 6: asset_catalog.py -- the foundational registry device_registry.py now
+# builds on top of. Covers a real catalog lookup, a bad (never-registered) class getting
+# rejected, and a duplicate-path conflict without overwrite=True.
+stage("Stage 6: asset_catalog.register_catalog_asset / resolve_catalog_asset")
+try:
+    from user.matterix_bridge.common.asset_catalog import register_catalog_asset, resolve_catalog_asset
+    from matterix_assets.robots import FRANKA_PANDA_HIGH_PD_IK_CFG
+
+    twin_cfg = resolve_catalog_asset("robots/franka_panda_high_pd_ik")
+    assert twin_cfg is FRANKA_PANDA_HIGH_PD_IK_CFG, f"resolved wrong class: {twin_cfg!r}"
+    ok("resolved 'robots/franka_panda_high_pd_ik' to the real, already-registered class")
+
+    try:
+        resolve_catalog_asset("no/such/path")
+        fail("expected KeyError for an unregistered catalog path, got none")
+    except KeyError:
+        ok("KeyError correctly raised for an unregistered catalog path")
+
+    class NotARealAsset:
+        def __init__(self, pos=None, rot=None):
+            pass
+
+    try:
+        register_catalog_asset("bad/not_a_real_asset", NotARealAsset)
+        fail("expected TypeError for a non-MatterixArticulationCfg class, got none")
+    except TypeError:
+        ok("TypeError correctly raised registering a non-MatterixArticulationCfg class")
+
+    # A distinct but still-valid callable, not NotARealAsset -- validate_asset_cfg() runs
+    # before the conflict check, so an invalid class would raise TypeError there and never
+    # actually exercise the conflict path this is meant to test.
+    def _a_different_but_valid_asset(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0)):
+        return FRANKA_PANDA_HIGH_PD_IK_CFG(pos=pos, rot=rot)
+
+    try:
+        register_catalog_asset("robots/franka_panda_high_pd_ik", _a_different_but_valid_asset)
+        fail("expected ValueError for re-registering an existing path with a different class, got none")
+    except ValueError:
+        ok("ValueError correctly raised for a conflicting re-registration without overwrite=True")
+except Exception as e:
+    fail("asset_catalog registration/resolution failed", e)
+
+
+# --- Stage 7: device_registry.py resolves correctly (now via the catalog, one hop deeper).
+stage("Stage 7: device_registry.resolve_device_twin")
 try:
     from user.matterix_bridge.common.device_registry import resolve_device_twin
     from matterix_assets.robots import FRANKA_PANDA_HIGH_PD_IK_CFG
@@ -208,8 +251,8 @@ except Exception as e:
     fail("device_registry resolution failed", e)
 
 
-# --- Stage 7: the MatterixBackend Ray actor, end to end.
-stage("Stage 7: MatterixBackend actor (get_backend, set_parameter, run_workflow)")
+# --- Stage 8: the MatterixBackend Ray actor, end to end.
+stage("Stage 8: MatterixBackend actor (get_backend, set_parameter, run_workflow)")
 try:
     import ray
 
@@ -246,7 +289,7 @@ except Exception as e:
 # scope here would compete with Stage 7's still-alive actor for this machine's one GPU
 # and hang in PENDING_CREATION rather than fail loudly (the idle-timeout sweep only frees
 # actors idle 15+ minutes, nowhere near this script's runtime).
-stage("Stage 8: set_parameters() batch setter and run_matterix_workflow() helper")
+stage("Stage 9: set_parameters() batch setter and run_matterix_workflow() helper")
 try:
     from user.matterix_bridge.common.matterix_backend import run_matterix_workflow
 

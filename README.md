@@ -82,14 +82,18 @@ You don't need to touch this repo. Your package just imports it.
                )
    ```
 
-4. **Register a device twin, only if your device fills an articulated-asset slot more than one physical robot could occupy.** Most devices skip this. Goes in the same `scenes/__init__.py` from step 1.
+4. **Register a device twin, only if your device fills an articulated-asset slot more than one physical robot could occupy.** Most devices skip this. Goes in the same `scenes/__init__.py` from step 1 -- two steps: register the asset in the catalog once (by a plain string path), then bind your specific lab device to that catalog entry.
 
    ```python
    from matterix_assets.robots import FRANKA_PANDA_HIGH_PD_IK_CFG
+   from user.matterix_bridge.common.asset_catalog import register_catalog_asset
    from user.matterix_bridge.common.device_registry import register_device_twin
 
-   register_device_twin("my_lab", "my_arm", FRANKA_PANDA_HIGH_PD_IK_CFG)
+   register_catalog_asset("robots/franka_panda_high_pd_ik", FRANKA_PANDA_HIGH_PD_IK_CFG)
+   register_device_twin("my_lab", "my_arm", "robots/franka_panda_high_pd_ik")
    ```
+
+   The catalog is the single source of truth for "what does this asset name mean" -- register each real asset once, then any number of devices (across any number of labs) can reference it by its catalog path instead of each importing and naming the Python class themselves.
 
 Your package doesn't need `eos` installed wherever Isaac Sim runs, only isaaclab/matterix. `eos start` itself needs both in the same env.
 
