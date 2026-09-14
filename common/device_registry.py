@@ -18,15 +18,21 @@ mean re-validating (or re-typo-ing) the same class five times.
 
 Populated via `register_device_twin()` rather than edited as literal dict entries, so a
 package other than this one can register its own lab's device -> twin bindings from its
-own code instead of editing this file directly - call it from your package's top-level
-`scenes/__init__.py` (the same file where you `gym.register()` your scene, and the same
-file `protocol_registry.py`'s docstring points to for this). Not a package-root
-`__init__.py` - EOS packages here are plain namespace packages with none of those (see
-this repo's own `user/matterix_bridge`, or EOS's own `user/example`). `scenes/__init__.py`
-is the right spot because it's auto-imported by runtime.py's `_discover_scene_modules()`
-after Isaac Sim has booted, which resolving a catalog entry needs (it goes through
-`asset_catalog.py`'s `matterix_assets` classes) - see `protocol_registry.py`'s docstring
-for why that's also why this can't go in `matterix_registrations.py`.
+own code instead of editing this file directly - call it from your package's root-level
+`matterix_devices.py` (a plain file, sibling of `pyproject.toml`, `labs/`, `devices/`,
+etc. - see this repo's own `matterix_devices.py` for the exact pattern). Deliberately
+NOT `scenes/__init__.py`: a scene's slots get filled by a device twin at workflow-run
+time (see `resolve_device_twin()` below and `run_workflow()`'s `devices=` parameter in
+runtime.py) - the device list shouldn't be owned by whichever scene file happens to
+import it, especially with a future layout/scene-description system in mind, where
+devices are registered once and then placed into any number of scenes.
+`matterix_devices.py` is auto-imported by runtime.py's `_discover_device_registrations()`
+after Isaac Sim has booted (needed to resolve catalog entries, which go through
+`asset_catalog.py`'s `matterix_assets` classes) - see that function's docstring for why
+it's called after scene discovery specifically (a matterix_assets-internal circular
+import, not a design choice here), and `protocol_registry.py`'s docstring for why this
+can't go in the pre-boot
+`matterix_registrations.py`.
 """
 
 from __future__ import annotations

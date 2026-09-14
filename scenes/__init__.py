@@ -15,12 +15,11 @@ Scenes, in increasing order of complexity:
 
 Their env ids are what protocol_registry.py's PROTOCOL_TWINS maps EOS protocol types onto.
 
-This is also where catalog assets and device twins get registered (see
-device_registry.py's and asset_catalog.py's module docstrings for why this file
-specifically, not matterix_registrations.py or a package-root __init__.py): this file is
-already auto-imported, by every package that has one, after Isaac Sim has booted --
-exactly what resolving a catalog entry needs, since it goes through matterix_assets
-classes (isaaclab-dependent).
+Catalog assets and device twins are NOT registered here -- see the package-root
+`matterix_devices.py` instead (`common/runtime.py`'s `_discover_device_registrations()`,
+called before this package's own discovery). Devices exist independently of any
+particular scene; a scene's slots get filled by a device twin at workflow-run time, not
+by this file importing one.
 """
 
 from . import (
@@ -36,20 +35,3 @@ __all__ = [
     "exp3_heater_transfer",
     "exp4_dual_arm_handoff",
 ]
-
-# Imported down here, not at module top -- matterix_assets/matterix have their own
-# internal import order that the scene submodules above already exercise correctly;
-# importing matterix_assets.robots before them (tried first, reverted) hits a circular
-# import (matterix_assets.equipment -> matterix.managers... -> matterix.envs ->
-# matterix_assets again, still mid-init). Safe here since exp1-4 above already fully
-# initialized both packages.
-from matterix_assets.robots import FRANKA_PANDA_HIGH_PD_IK_CFG  # noqa: E402
-
-from user.matterix_bridge.common.asset_catalog import register_catalog_asset  # noqa: E402
-from user.matterix_bridge.common.device_registry import register_device_twin  # noqa: E402
-
-# This package's own example catalog entry + device, registered the same way an external
-# package should register its own -- see asset_catalog.py's and device_registry.py's
-# module docstrings. Not a real device; it's a placeholder illustrating the shape.
-register_catalog_asset("robots/franka_panda_high_pd_ik", FRANKA_PANDA_HIGH_PD_IK_CFG)
-register_device_twin("example_lab", "franka_01", "robots/franka_panda_high_pd_ik")
