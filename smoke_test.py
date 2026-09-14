@@ -190,11 +190,28 @@ except Exception as e:
 
 # --- Stage 6: asset_catalog.py -- the foundational registry device_registry.py now
 # builds on top of. Covers a real catalog lookup, a bad (never-registered) class getting
-# rejected, and a duplicate-path conflict without overwrite=True.
+# rejected, a duplicate-path conflict without overwrite=True, and discover_matterix_assets()
+# actually finding every asset category (matterix_devices.py, run via _discover_device_
+# registrations() during Stage 0/4's earlier run_workflow() calls, already bulk-registered
+# all of these -- this just confirms discovery itself still sees the full, real set).
 stage("Stage 6: asset_catalog.register_catalog_asset / resolve_catalog_asset")
 try:
-    from user.matterix_bridge.common.asset_catalog import register_catalog_asset, resolve_catalog_asset
+    from user.matterix_bridge.common.asset_catalog import (
+        discover_matterix_assets,
+        register_catalog_asset,
+        resolve_catalog_asset,
+    )
     from matterix_assets.robots import FRANKA_PANDA_HIGH_PD_IK_CFG
+
+    discovered = discover_matterix_assets()
+    categories_found = {path.split("/", 1)[0] for path in discovered}
+    assert categories_found == {"robots", "equipment", "labware", "infrastructure"}, (
+        f"expected all 4 asset categories, got {categories_found}"
+    )
+    assert discovered.get("robots/franka_panda_high_pd_ik") is FRANKA_PANDA_HIGH_PD_IK_CFG, (
+        "discover_matterix_assets() didn't find the known Franka IK arm under the expected path"
+    )
+    ok(f"discover_matterix_assets() found {len(discovered)} real assets across all 4 categories")
 
     twin_cfg = resolve_catalog_asset("robots/franka_panda_high_pd_ik")
     assert twin_cfg is FRANKA_PANDA_HIGH_PD_IK_CFG, f"resolved wrong class: {twin_cfg!r}"
@@ -212,9 +229,9 @@ try:
 
     try:
         register_catalog_asset("bad/not_a_real_asset", NotARealAsset)
-        fail("expected TypeError for a non-MatterixArticulationCfg class, got none")
+        fail("expected TypeError for a class producing no Matterix asset base type, got none")
     except TypeError:
-        ok("TypeError correctly raised registering a non-MatterixArticulationCfg class")
+        ok("TypeError correctly raised registering a class producing no Matterix asset base type")
 
     # A distinct but still-valid callable, not NotARealAsset -- validate_asset_cfg() runs
     # before the conflict check, so an invalid class would raise TypeError there and never
