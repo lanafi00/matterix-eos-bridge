@@ -82,18 +82,16 @@ You don't need to touch this repo. Your package just imports it.
                )
    ```
 
-4. **Register a device twin, only if your device fills an articulated-asset slot more than one physical robot could occupy.** Most devices skip this. Goes in a `matterix_devices.py` at your package's root (a sibling of `pyproject.toml`, `labs/`, `devices/`, etc. -- not `scenes/__init__.py`: devices exist independently of any particular scene, and a scene's slots get filled by a device twin at workflow-run time, not the other way around). Two steps: register the asset in the catalog once (by a plain string path), then bind your specific lab device to that catalog entry.
+4. **Register a device twin, only if your device fills an articulated-asset slot more than one physical robot could occupy.** Most devices skip this. Goes in a `matterix_devices.py` at your package's root (a sibling of `pyproject.toml`, `labs/`, `devices/`, etc. -- not `scenes/__init__.py`: devices exist independently of any particular scene, and a scene's slots get filled by a device twin at workflow-run time, not the other way around). Bind your lab device directly to the real Matterix asset class:
 
    ```python
    from matterix_assets.robots import FRANKA_PANDA_HIGH_PD_IK_CFG
-   from user.matterix_bridge.common.asset_catalog import register_catalog_asset
    from user.matterix_bridge.common.device_registry import register_device_twin
 
-   register_catalog_asset("robots/franka_panda_high_pd_ik", FRANKA_PANDA_HIGH_PD_IK_CFG)
-   register_device_twin("my_lab", "my_arm", "robots/franka_panda_high_pd_ik")
+   register_device_twin("my_lab", "my_arm", FRANKA_PANDA_HIGH_PD_IK_CFG)
    ```
 
-   The catalog is the single source of truth for "what does this asset name mean" -- register each real asset once, then any number of devices (across any number of labs) can reference it by its catalog path instead of each importing and naming the Python class themselves. `matterix_devices.py` is auto-imported once Isaac Sim has booted, the same way `matterix_registrations.py` is auto-imported before it boots -- you never call these registration functions yourself, the file just needs to exist.
+   Not sure what classes are available? `user.matterix_bridge.common.matterix_asset_types.discover_matterix_assets()` (call after Isaac Sim has booted) introspects Matterix's own robots/equipment/labware/infrastructure packages and lists every real asset class it ships, so you don't have to guess or hunt for names. `matterix_devices.py` is auto-imported once Isaac Sim has booted, the same way `matterix_registrations.py` is auto-imported before it boots -- you never call `register_device_twin()` yourself from outside this file, it just needs to exist.
 
 Your package doesn't need `eos` installed wherever Isaac Sim runs, only isaaclab/matterix. `eos start` itself needs both in the same env.
 

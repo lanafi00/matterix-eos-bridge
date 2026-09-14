@@ -188,50 +188,66 @@ except Exception as e:
     fail("error-path check itself failed", e)
 
 
-# --- Stage 6: asset_catalog.py -- the foundational registry device_registry.py now
-# builds on top of. Covers a real catalog lookup, a bad (never-registered) class getting
-# rejected, a duplicate-path conflict without overwrite=True, and discover_matterix_assets()
-# actually finding every asset category (matterix_devices.py, run via _discover_device_
-# registrations() during Stage 0/4's earlier run_workflow() calls, already bulk-registered
-# all of these -- this just confirms discovery itself still sees the full, real set).
-stage("Stage 6: asset_catalog.register_catalog_asset / resolve_catalog_asset")
+# --- Stage 6: matterix_asset_types.py -- pure introspection/validation utilities,
+# no registry (that layer was collapsed back into device_registry.py -- see its module
+# docstring). Covers discover_matterix_assets() finding every real asset category, and
+# validate_asset_cfg() accepting a real class / rejecting a fake one directly.
+stage("Stage 6: matterix_asset_types.discover_matterix_assets / validate_asset_cfg")
 try:
-    from user.matterix_bridge.common.asset_catalog import (
+    from user.matterix_bridge.common.matterix_asset_types import (
         discover_matterix_assets,
-        register_catalog_asset,
-        resolve_catalog_asset,
+        validate_asset_cfg,
     )
     from matterix_assets.robots import FRANKA_PANDA_HIGH_PD_IK_CFG
 
     discovered = discover_matterix_assets()
-    categories_found = {path.split("/", 1)[0] for path in discovered}
+    categories_found = {name.split("/", 1)[0] for name in discovered}
     assert categories_found == {"robots", "equipment", "labware", "infrastructure"}, (
         f"expected all 4 asset categories, got {categories_found}"
     )
     assert discovered.get("robots/franka_panda_high_pd_ik") is FRANKA_PANDA_HIGH_PD_IK_CFG, (
-        "discover_matterix_assets() didn't find the known Franka IK arm under the expected path"
+        "discover_matterix_assets() didn't find the known Franka IK arm under the expected name"
     )
     ok(f"discover_matterix_assets() found {len(discovered)} real assets across all 4 categories")
 
-    twin_cfg = resolve_catalog_asset("robots/franka_panda_high_pd_ik")
-    assert twin_cfg is FRANKA_PANDA_HIGH_PD_IK_CFG, f"resolved wrong class: {twin_cfg!r}"
-    ok("resolved 'robots/franka_panda_high_pd_ik' to the real, already-registered class")
-
-    try:
-        resolve_catalog_asset("no/such/path")
-        fail("expected KeyError for an unregistered catalog path, got none")
-    except KeyError:
-        ok("KeyError correctly raised for an unregistered catalog path")
+    validate_asset_cfg(FRANKA_PANDA_HIGH_PD_IK_CFG)  # raises on failure
+    ok("validate_asset_cfg() accepted a real, known-good asset class")
 
     class NotARealAsset:
         def __init__(self, pos=None, rot=None):
             pass
 
     try:
-        register_catalog_asset("bad/not_a_real_asset", NotARealAsset)
+        validate_asset_cfg(NotARealAsset)
         fail("expected TypeError for a class producing no Matterix asset base type, got none")
     except TypeError:
-        ok("TypeError correctly raised registering a class producing no Matterix asset base type")
+        ok("TypeError correctly raised validating a class producing no Matterix asset base type")
+except Exception as e:
+    fail("matterix_asset_types discovery/validation failed", e)
+
+
+# --- Stage 7: device_registry.py -- DEVICE_TWINS stores classes directly (no catalog
+# indirection). Covers resolve_device_twin() resolving a real binding, a KeyError for an
+# unregistered device, and register_device_twin()'s own validation/conflict checks.
+stage("Stage 7: device_registry.register_device_twin / resolve_device_twin")
+try:
+    from user.matterix_bridge.common.device_registry import register_device_twin, resolve_device_twin
+    from matterix_assets.robots import FRANKA_PANDA_HIGH_PD_IK_CFG
+
+    existing = FRANKA_PANDA_HIGH_PD_IK_CFG(pos=(1.0, 2.0, 3.0))
+    twin = resolve_device_twin("example_lab", "franka_01", existing)
+    assert twin.pos == existing.pos, "twin lost the existing slot's position"
+    ok(f"resolved twin for ('example_lab', 'franka_01'), position preserved: {twin.pos}")
+
+    class NotARealAsset:
+        def __init__(self, pos=None, rot=None):
+            pass
+
+    try:
+        register_device_twin("some_lab", "some_device", NotARealAsset)
+        fail("expected TypeError registering a device against a non-Matterix-asset class, got none")
+    except TypeError:
+        ok("TypeError correctly raised registering a device against a non-Matterix-asset class")
 
     # A distinct but still-valid callable, not NotARealAsset -- validate_asset_cfg() runs
     # before the conflict check, so an invalid class would raise TypeError there and never
@@ -240,24 +256,10 @@ try:
         return FRANKA_PANDA_HIGH_PD_IK_CFG(pos=pos, rot=rot)
 
     try:
-        register_catalog_asset("robots/franka_panda_high_pd_ik", _a_different_but_valid_asset)
-        fail("expected ValueError for re-registering an existing path with a different class, got none")
+        register_device_twin("example_lab", "franka_01", _a_different_but_valid_asset)
+        fail("expected ValueError for re-registering an existing device with a different class, got none")
     except ValueError:
         ok("ValueError correctly raised for a conflicting re-registration without overwrite=True")
-except Exception as e:
-    fail("asset_catalog registration/resolution failed", e)
-
-
-# --- Stage 7: device_registry.py resolves correctly (now via the catalog, one hop deeper).
-stage("Stage 7: device_registry.resolve_device_twin")
-try:
-    from user.matterix_bridge.common.device_registry import resolve_device_twin
-    from matterix_assets.robots import FRANKA_PANDA_HIGH_PD_IK_CFG
-
-    existing = FRANKA_PANDA_HIGH_PD_IK_CFG(pos=(1.0, 2.0, 3.0))
-    twin = resolve_device_twin("example_lab", "franka_01", existing)
-    assert twin.pos == existing.pos, "twin lost the existing slot's position"
-    ok(f"resolved twin for ('example_lab', 'franka_01'), position preserved: {twin.pos}")
 
     try:
         resolve_device_twin("no_such_lab", "no_such_device", existing)
