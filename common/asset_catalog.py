@@ -12,10 +12,12 @@ asset," and they should all point at one registration, not each carry their own 
 the class mapping.
 
 Populated via `register_catalog_asset()` the same way every other registry in this
-package is populated -- call it at module level in your own package's `scenes/__init__.py`
-(needs real `matterix_assets` classes, so -- same reasoning as device twins, see that
-module's docstring -- only safe to do after Isaac Sim has booted, which is exactly when
-`scenes/__init__.py` is guaranteed to have already run).
+package is populated -- call it at module level in your own package's root-level
+`matterix_devices.py` (needs real `matterix_assets` classes, so only safe to do after
+Isaac Sim has booted -- see `runtime.py`'s `_discover_device_registrations()`, which
+auto-imports that file once Isaac Sim is running). Not `scenes/__init__.py`: which
+assets/devices exist shouldn't be coupled to which scene file happens to import them --
+see `device_registry.py`'s module docstring.
 """
 
 from __future__ import annotations

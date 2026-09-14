@@ -125,6 +125,11 @@ def _discover_scene_modules() -> None:
     directory uses. Uses `_discover_user_package_dirs()` above (not EOS's own package
     discovery) so this stays importable in an isaaclab-only conda env with no `eos`
     installed -- see that function's docstring for why.
+
+    Scene definitions only -- NOT where catalog assets/device twins get registered (see
+    `_discover_device_registrations()` below, called first in `_get_env()`). A scene
+    shouldn't own the device list that fills its slots; devices exist independently and
+    get referenced (eventually, placed) into a scene, not the other way around.
     """
     import importlib
     from pathlib import Path
@@ -133,6 +138,37 @@ def _discover_scene_modules() -> None:
     for package_dir in _discover_user_package_dirs(user_dir):
         if (package_dir / "scenes" / "__init__.py").is_file():
             importlib.import_module(f"user.{package_dir.name}.scenes")
+
+
+def _discover_device_registrations() -> None:
+    """Import every EOS package's `matterix_devices.py`, if it has one.
+
+    Registers that package's catalog assets (`asset_catalog.py`) and device twins
+    (`device_registry.py`) as a side effect of import -- a dedicated file, deliberately
+    NOT `scenes/__init__.py`: which devices/assets physically exist shouldn't be coupled
+    to which scene file happens to import them. This mirrors `matterix_registrations.py`'s
+    convention (a plain file at a package's root, auto-discovered by name) but runs
+    post-boot instead of pre-boot, since registering a catalog asset needs to instantiate
+    a real `matterix_assets` class and check its USD path via `isaaclab.utils.assets`,
+    both of which require Isaac Sim already running (see `asset_catalog.py`'s docstring).
+
+    Called AFTER `_discover_scene_modules()` in `_get_env()`, even though devices are
+    conceptually independent of scenes -- forced by a matterix_assets-internal circular
+    import, not a design choice here. See the comment at that call site for the verified
+    failure this order avoids. A package still only needs a `matterix_devices.py` for
+    this to work, never a custom scene of its own (this repo's exp1-4 scenes cover the
+    "some scene must be imported first" requirement on every package's behalf).
+
+    Uses `_discover_user_package_dirs()` above (not EOS's own package discovery) for the
+    same reason `_discover_scene_modules()` does -- see that function's docstring.
+    """
+    import importlib
+    from pathlib import Path
+
+    user_dir = Path(_eos_path()) / "user"
+    for package_dir in _discover_user_package_dirs(user_dir):
+        if (package_dir / "matterix_devices.py").is_file():
+            importlib.import_module(f"user.{package_dir.name}.matterix_devices")
 
 
 def ensure_app_launched(headless: bool = True, device: str = "cuda:0", enable_cameras: bool = False) -> None:
@@ -221,7 +257,19 @@ def _get_env(
     import gymnasium as gym
     from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
 
+    # Scenes first, then devices -- NOT the conceptual order (devices are meant to be
+    # independent of, and registerable before, any scene). This order is forced by a
+    # matterix_assets-internal circular import: whichever import is the *first* one ever
+    # to touch matterix_assets in this process determines whether it succeeds. Importing
+    # exp1-4's scene modules first happens to warm up the matterix_assets/matterix package
+    # graph safely; importing matterix_assets.robots directly as the first-ever touch (i.e.
+    # matterix_devices.py running before any scene) hits `ImportError: cannot import name
+    # 'MatterixArticulationCfg' from partially initialized module 'matterix_assets'` --
+    # VERIFIED live, both orders, in the eos-isaaclab conda env. This is a Matterix package
+    # ordering issue, not a matterix_devices.py-vs-scenes/__init__.py design choice; fix
+    # here if Matterix's own import graph is ever cleaned up.
     _discover_scene_modules()  # registers every EOS package's Matterix-Experiment-* envs
+    _discover_device_registrations()  # registers every EOS package's catalog assets/device twins
     from user.matterix_bridge.common.device_registry import resolve_device_twin
 
     try:

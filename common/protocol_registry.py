@@ -24,10 +24,11 @@ gym task ids, task/workflow names), never a twin config class. That's because
 protocol/task resolution can happen before Isaac Sim boots (e.g. inside
 `MatterixBackend.set_parameter()`, which never touches runtime.py at all), so this
 discovery is deliberately separate from -- and runs earlier than -- runtime.py's
-`_discover_scene_modules()`, which imports each package's `scenes/` subpackage (that
-one is fine importing isaaclab-dependent code, since it only ever runs after Isaac Sim
-has booted). Device twins, which DO need isaaclab-dependent classes, are registered
-from `scenes/__init__.py` instead, for exactly this reason.
+`_discover_device_registrations()`/`_discover_scene_modules()`, which import each
+package's root-level `matterix_devices.py` and `scenes/` subpackage respectively (those
+are fine importing isaaclab-dependent code, since they only ever run after Isaac Sim has
+booted). Device twins, which DO need isaaclab-dependent classes, are registered from
+`matterix_devices.py` instead, for exactly this reason.
 
 These are explicit mappings rather than a naming convention (e.g. "assume the EOS task
 name always matches the Matterix workflow key") on purpose: a rename on either side -
