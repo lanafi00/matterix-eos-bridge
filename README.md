@@ -82,7 +82,7 @@ You don't need to touch this repo. Your package just imports it.
                )
    ```
 
-4. **Register a device twin, only if your device fills an articulated-asset slot more than one physical robot could occupy.** Most devices skip this. Goes in a `matterix_devices.py` at your package's root (a sibling of `pyproject.toml`, `labs/`, `devices/`, etc. -- not `scenes/__init__.py`: devices exist independently of any particular scene, and a scene's slots get filled by a device twin at workflow-run time, not the other way around). Bind your lab device directly to the real Matterix asset class:
+4. **Register a device twin, only if your device fills a scene slot (a robot in `articulated_assets`, or a non-robot asset like a hot plate or beaker in `objects`) more than one physical implementation could occupy.** Most devices skip this. Goes in a `matterix_devices.py` at your package's root (a sibling of `pyproject.toml`, `labs/`, `devices/`, etc. -- not `scenes/__init__.py`: devices exist independently of any particular scene, and a scene's slots get filled by a device twin at workflow-run time, not the other way around). Bind your lab device directly to the real Matterix asset class:
 
    ```python
    from matterix_assets.robots import FRANKA_PANDA_HIGH_PD_IK_CFG

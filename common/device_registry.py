@@ -3,12 +3,17 @@
 Keyed exactly the way EOS names a device - `(lab_name, device_name)` - so a device
 assignment coming out of an EOS `ScheduledTask.devices` resolves to a concrete twin
 config with a single dict lookup. This is *twin substitution*: letting one already-
-authored scene's actuated slot (e.g. "robot" in `articulated_assets`) be filled by
-different concrete hardware depending on which lab/device is calling, without writing
-a new scene per physical unit. Most new devices don't need this at all - only ones that
-occupy an articulated-asset slot with more than one possible physical implementation
-across labs/deployments. See `resolve_device_twin()`'s docstring and `run_workflow()`'s
-`devices=` parameter in runtime.py.
+authored scene's slot (e.g. "robot" in `articulated_assets`, or "beaker"/"ika_plate" in
+`objects` - a scene's only two asset containers, see runtime.py's `_get_env()`) be filled
+by different concrete hardware depending on which lab/device is calling, without writing
+a new scene per physical unit. Not robot-only: this registry and `validate_asset_cfg()`
+(matterix_asset_types.py) are already type-agnostic across all three Matterix asset base
+types, and `_get_env()`'s substitution loop checks both `articulated_assets` and `objects`
+for the slot - so the same registry covers a lab's specific hot plate or beaker, not just
+its robot. Most new devices don't need this at all - only ones that occupy a scene slot
+with more than one possible physical implementation across labs/deployments. See
+`resolve_device_twin()`'s docstring and `run_workflow()`'s `devices=` parameter in
+runtime.py.
 
 This registry stores the real Matterix asset config CLASS directly, not an indirection
 through a separate name->class catalog - there used to be one (`asset_catalog.py`), but
@@ -81,11 +86,27 @@ def register_device_twin(
 def resolve_device_twin(
     lab_name: str, device_name: str, existing: MatterixAssetCfg
 ) -> MatterixAssetCfg:
-    """Build the twin config for `(lab_name, device_name)`, keeping `existing`'s placement.
+    """Build the twin config for `(lab_name, device_name)`, keeping `existing`'s placement
+    AND scene role.
 
-    `existing` is the slot's current config from the env cfg being overridden - its
-    `pos`/`rot` describe where that slot sits in the scene (a property of the scene
-    layout), not which physical device fills it, so they carry over across the swap.
+    `existing` is the slot's current config from the env cfg being overridden. Two things
+    carry over from it to the twin: `pos`/`rot` (where this slot sits in the scene) and
+    `semantics` (what simulated behavior this slot is expected to have - e.g. a heater's
+    `HeaterCfg`, or a beaker's contact/heat-transfer semantics). Both describe the SLOT - a
+    property of the scene, authored once by whoever built it - not the specific physical
+    device filling it, so a twin swap shouldn't change them. Physical-device-intrinsic
+    fields (usd_path/spawn, mass, scale, frames - e.g. grasp-point offsets, which depend on
+    that specific object's own geometry) intentionally come from the twin's own class
+    defaults instead, since a different physical device really can have a different
+    mass/shape/grasp geometry - only `cfg_class(pos=..., rot=..., semantics=...)` is passed
+    here, nothing else from `existing`.
+
+    VERIFIED this matters, not just theoretical: this repo's own heater_transfer scene
+    attaches `semantics=HeaterCfg(...)` directly on its "ika_plate" object (and
+    `HeatTransferCfg(...)` on "robot" and "beaker") - substituting any of those slots
+    without carrying `semantics` over would silently strip the exact behavior that makes
+    "turn_on_heater" work, with no error raised anywhere - just an environment that builds
+    fine and an observation manager that behaves as if nothing is happening.
     """
     key = (lab_name, device_name)
     if key not in DEVICE_TWINS:
@@ -94,4 +115,4 @@ def resolve_device_twin(
             "it (see matterix_bridge/common/device_registry.py)."
         )
     twin_cfg = DEVICE_TWINS[key]
-    return twin_cfg(pos=existing.pos, rot=existing.rot)
+    return twin_cfg(pos=existing.pos, rot=existing.rot, semantics=existing.semantics)
