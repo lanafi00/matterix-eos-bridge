@@ -296,15 +296,27 @@ def _get_env(
         # Scope it per process so concurrent scope_ids don't collide.
         env_cfg.record_path = f"/tmp/isaaclab/logs/matterix_bridge/pid{os.getpid()}/dataset.hdf5"
 
+        # A scene has exactly two asset containers on MatterixBaseEnvCfg (VERIFIED in
+        # matterix_base_env_cfg.py): `articulated_assets` (robots) and `objects` (rigid +
+        # static objects -- beakers, plates, tables -- together in one dict, no separate
+        # per-type containers to check). device_registry.py's DEVICE_TWINS/
+        # resolve_device_twin() are already type-agnostic (validate_asset_cfg() accepts
+        # all three Matterix asset base types), so substitution just needs to look in
+        # whichever of the two containers actually has the slot -- no separate "rigid
+        # object registry" needed, same registry either way.
         for slot, (lab_name, device_name) in (devices or {}).items():
-            if slot not in env_cfg.articulated_assets:
+            if slot in env_cfg.articulated_assets:
+                env_cfg.articulated_assets[slot] = resolve_device_twin(
+                    lab_name, device_name, env_cfg.articulated_assets[slot]
+                )
+            elif slot in env_cfg.objects:
+                env_cfg.objects[slot] = resolve_device_twin(lab_name, device_name, env_cfg.objects[slot])
+            else:
                 raise ValueError(
                     f"devices[{slot!r}] has no matching slot in {task}'s articulated_assets "
-                    f"(available: {list(env_cfg.articulated_assets)})."
+                    f"or objects (available: articulated_assets={list(env_cfg.articulated_assets)}, "
+                    f"objects={list(env_cfg.objects)})."
                 )
-            env_cfg.articulated_assets[slot] = resolve_device_twin(
-                lab_name, device_name, env_cfg.articulated_assets[slot]
-            )
 
         env = gym.make(task, cfg=env_cfg, render_mode=render_mode).unwrapped
         env.reset()
@@ -343,13 +355,13 @@ def run_workflow(
             Picks the scene "shape" - which objects, observations, and workflows exist -
             independent of which concrete device backs each agent slot (see `devices`).
         workflow: A key into that task's `env_cfg.workflows` dict, e.g. "pickup_beaker".
-        devices: Optional override mapping an `articulated_assets` slot name (e.g.
-            "robot") to a concrete `(lab_name, device_name)` pair, matching the shape of
-            an EOS `ScheduledTask.devices` assignment. Each pair is resolved to a twin
-            config via `matterix_bridge.common.device_registry.DEVICE_TWINS` (through the
-            `device_registry.py` re-export shim in this package), replacing that slot's
-            default config for this call - no new gym registration needed per device.
-            Omit to use the task's default `articulated_assets` as-is.
+        devices: Optional override mapping an `articulated_assets` OR `objects` slot name
+            (e.g. "robot", or "beaker"/"ika_plate" for a non-robot asset) to a concrete
+            `(lab_name, device_name)` pair, matching the shape of an EOS
+            `ScheduledTask.devices` assignment. Each pair is resolved to a twin config via
+            `device_registry.py`'s `DEVICE_TWINS`, replacing that slot's default config
+            for this call - no new gym registration needed per device. Omit to use the
+            task's default `articulated_assets`/`objects` as-is.
         workflow_overrides: Optional {field: value} patch applied to `env_cfg.workflows
             [workflow]` (e.g. {"target_temperature": 350.0} for a TurnOnHeaterCfg) right
             before this call runs it. Unlike `devices`, this does NOT trigger an env
