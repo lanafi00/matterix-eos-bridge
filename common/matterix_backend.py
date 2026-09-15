@@ -111,6 +111,15 @@ class MatterixBackend:
 
         protocol_type: pass None (the common case) to resolve from eos_task_name alone --
         see `_resolve()` below.
+
+        Every call against this SAME actor (i.e. every DAG task in one protocol run,
+        sharing one scope_id) must resolve to the same `task`/`num_envs`/`devices` -- see
+        `runtime._get_env()`'s docstring. Two EOS tasks in one protocol run that map to
+        DIFFERENT Matterix gym tasks (different scene "shapes") will hit that RuntimeError
+        the moment the second one calls this, because both share this one actor/process.
+        Split such a protocol's tasks across more than one scope_id (a device driver can
+        pass any string as `protocol_run_name`/scope_id -- it doesn't have to be EOS's
+        `protocol_run_name` literally) if you need more than one scene per protocol run.
         """
         self._last_activity = time.monotonic()
         # Local import: Isaac Sim is heavy and only available inside the isaaclab conda

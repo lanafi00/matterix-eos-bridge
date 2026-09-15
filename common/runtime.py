@@ -19,10 +19,14 @@ Typical usage from a long-lived worker process:
     if result.success:
         ...
 
-Calling `run_workflow()` again with a different `task`, `num_envs`, or `devices`
-transparently tears down the current gym environment and builds the new one; calling it
-again with the *same* task/num_envs/devices reuses the existing environment (just resets
-it), so a sequence of workflow calls against one digital twin stays fast.
+Calling `run_workflow()` again with the *same* `task`/`num_envs`/`devices` reuses the
+existing environment (just resets it), so a sequence of workflow calls against one
+digital twin stays fast. Calling it again with a DIFFERENT `task`/`num_envs`/`devices`
+raises `RuntimeError` instead of rebuilding - see `_get_env()`'s docstring for why this
+isn't just unsupported but actively unsafe to attempt (a real, reproduced, indefinite
+hang inside third-party Isaac Sim/Isaac Lab code, not something this module can fix).
+Use a fresh process (e.g. a new `MatterixBackend` actor/scope_id) for a different
+task/num_envs/devices instead.
 
 `devices` swaps which concrete device backs an agent slot (e.g. "robot") without
 registering a new task - see `device_registry.py` (a sibling module in this same package)
@@ -251,7 +255,30 @@ def _get_env(
     render_mode: str | None,
     devices: dict[str, tuple[str, str]] | None,
 ):
-    """Return the current gym env, (re)building it only if `task`/`num_envs`/`devices` changed."""
+    """Return the current gym env, building it once per process; raises RuntimeError if
+    `task`/`num_envs`/`devices` changed on a later call instead of trying to rebuild.
+
+    Rebuilding a second live environment in an already-booted Isaac Sim process is NOT
+    supported here, on purpose, because it's not just untested but actually unsafe --
+    VERIFIED with a real, reproduced hang, root-caused via a faulthandler stack dump
+    (not guessed): constructing the second `MatterixBaseEnv` builds a second isaaclab
+    `SimulationContext`, whose `__init__` detects the still-live first one and calls
+    `.stop()` on it, which calls `torch.cuda.set_device()` from inside an on-stop event
+    handler -- and that call never returns. This reproduced identically with the GPU
+    completely idle and no other process competing for it, so it isn't contention; it's
+    third-party isaaclab/isaacsim code (`isaaclab/sim/simulation_context.py`,
+    `isaacsim.core.api.../simulation_context.py`), not anything in this bridge or in
+    Matterix, and not something fixable from here. `env.close()` alone completes in
+    under a second -- it's specifically building the SECOND environment afterward that
+    hangs, regardless of how long you wait after `close()` or how many
+    `_simulation_app.update()` calls run in between (both tried, neither helps).
+
+    Practical effect: one process (one `MatterixBackend` actor / one `scope_id`) can only
+    ever run ONE task/num_envs/devices combination for its whole lifetime. A protocol
+    that needs a different scene or device binding partway through needs a different
+    scope_id (a fresh actor, a fresh process) for that portion, not a second
+    `run_workflow()` call with different arguments against the same one.
+    """
     global _current_task, _current_num_envs, _current_devices, _current_env, _current_env_cfg
 
     import gymnasium as gym
@@ -285,7 +312,22 @@ def _get_env(
     )
     if needs_new_env:
         if _current_env is not None:
-            _current_env.close()
+            # Do NOT close()+rebuild -- see this function's docstring. Building a second
+            # live environment here hangs this process indefinitely (a real, reproduced,
+            # third-party isaaclab bug, not a hypothetical). Fail fast and loud instead of
+            # silently hanging forever with no explanation.
+            raise RuntimeError(
+                f"_get_env() was asked to switch task/num_envs/devices in a process that "
+                f"already has a live environment (current: task={_current_task!r}, "
+                f"num_envs={_current_num_envs!r}, devices={_current_devices!r}; requested: "
+                f"task={task!r}, num_envs={num_envs!r}, devices={devices!r}). Rebuilding a "
+                "second environment in the same already-booted Isaac Sim process is not "
+                "supported -- it hangs indefinitely inside third-party isaaclab code (see "
+                "this function's docstring for the verified root cause). Use a fresh "
+                "process (e.g. a new MatterixBackend actor / scope_id) for this "
+                "task/num_envs/devices instead of calling run_workflow() again with "
+                "different arguments against this one."
+            )
 
         env_cfg = parse_env_cfg(task, device=device, num_envs=num_envs, use_fabric=use_fabric)
 
@@ -385,6 +427,10 @@ def run_workflow(
         A `WorkflowResult` with per-env success flags for the final episode run.
 
     Raises:
+        RuntimeError: If this process already has a live environment for a *different*
+            task/num_envs/devices (see `_get_env()`'s docstring -- rebuilding one in
+            process is unsafe, not just unsupported). Call this with the SAME
+            task/num_envs/devices every time in one process, or use a fresh process.
         ValueError: If `workflow` is not defined on `task`; if `devices` names a slot
             that doesn't exist on `task`; or if `workflow_overrides` is given for a
             composite (dict/list) workflow, or names a field the resolved workflow

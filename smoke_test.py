@@ -332,4 +332,28 @@ except Exception as e:
     fail("run_matterix_workflow()/set_parameters() test failed", e)
 
 
+# --- Stage 10: runtime._get_env() refuses to rebuild a second live environment in this
+# process (Stage 4 already built one, for a different task, in this same driver process --
+# not a Ray actor like Stages 8/9). VERIFIED (outside this script, via a faulthandler
+# stack dump) that actually attempting this rebuild hangs indefinitely inside third-party
+# isaaclab code, not just errors -- see runtime.py's _get_env() docstring for the root
+# cause. This confirms the fail-fast guard fires immediately instead.
+stage("Stage 10: runtime._get_env() rejects an in-process task switch instead of hanging")
+try:
+    from user.matterix_bridge.common.runtime import run_workflow
+
+    try:
+        run_workflow(
+            task="Matterix-Experiment-Beaker-Pick-Franka-v1",  # different from Stage 4's task
+            workflow="pickup_beaker",
+            print_progress=False,
+        )
+        fail("expected RuntimeError for an in-process task switch, got none")
+    except RuntimeError as e:
+        assert "already has a live environment" in str(e), f"unexpected RuntimeError message: {e}"
+        ok("RuntimeError correctly raised instead of hanging on an in-process task switch")
+except Exception as e:
+    fail("in-process task-switch guard test failed", e)
+
+
 print(f"\n{'=' * 70}\nALL STAGES PASSED\n{'=' * 70}")
