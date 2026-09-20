@@ -13,14 +13,16 @@ class EventCfg(EventManagerCfg):
 
 @configclass
 class ObservationManagerCfg:
+{% if has_policy_group %}
     @configclass
-    class ArticulationsGroup(ObsGroup):
-{{ articulations_group_body }}
+    class PolicyCfg(ObsGroup):
+{{ policy_group_body }}
 
         def __post_init__(self):
             self.enable_corruption = False
             self.concatenate_terms = False
 
+{% endif %}
     @configclass
     class RigidObjectsGroup(ObsGroup):
 {{ rigid_objects_group_body }}
@@ -29,8 +31,19 @@ class ObservationManagerCfg:
             self.enable_corruption = False
             self.concatenate_terms = False
 
-    articulations: ArticulationsGroup = ArticulationsGroup()
+    @configclass
+    class ArticulationsGroup(ObsGroup):
+{{ articulations_group_body }}
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = False
+
+{% if has_policy_group %}
+    policy: PolicyCfg = PolicyCfg()
+{% endif %}
     rigid_objects: RigidObjectsGroup = RigidObjectsGroup()
+    articulations: ArticulationsGroup = ArticulationsGroup()
 
 
 @configclass
@@ -51,6 +64,10 @@ class {{ class_name }}(MatterixBaseEnvCfg):
 
     observations = ObservationManagerCfg()
     events = EventCfg()
+{% if global_semantics_line %}
+
+{{ global_semantics_line }}
+{% endif %}
 
     workflows = {
 {{ workflows_body }}
