@@ -109,8 +109,6 @@ class PickAndPlaceEnvCfg(MatterixBaseEnvCfg):
     observations = ObservationManagerCfg()
     events = EventCfg()
 
-    record_path = "datasets/dataset.hdf5"
-
     workflows = {
         # Atomic, one entry per EOS DAG task node - what an EOS-facing caller dispatches
         # one at a time (see matterix_bridge/common/protocol_registry.py).

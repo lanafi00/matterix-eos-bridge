@@ -35,6 +35,29 @@ from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
+# Kwargs for the atomic steps also used, unchanged, inside "pickup_and_place" below (a bundled
+# convenience workflow for manual/dev CLI use, never reached through protocol_registry.py -- see
+# its own comment). Module-level, not class attributes: `@configclass` turns every non-dunder
+# class attribute into a config field, so these live outside HeaterTransferEnvCfg's body and get
+# passed to a fresh Cfg() call at each use, rather than sharing one mutable instance between the
+# atomic entry and the bundle -- workflow_overrides (runtime.run_workflow) mutates a workflow's
+# Cfg instance in place, and only ever targets an atomic entry by name, so two entries built from
+# the same instance would let an override on "turn_on_heater" silently leak into "pickup_and_place".
+_TURN_ON_HEATER_KWARGS = dict(asset_name="ika_plate", value=True, target_temperature=373.15)
+_TURN_OFF_HEATER_KWARGS = dict(asset_name="ika_plate", value=False)
+_PICK_BEAKER_KWARGS = dict(
+    description="Pick up the beaker",
+    agent_assets="robot",
+    object="beaker",
+    action_space_info=FRANKA_IK_ACTION_SPACE,
+)
+_PLACE_BEAKER_KWARGS = dict(
+    description="Place the beaker on top of the IKA plate",
+    agent_assets="robot",
+    target="ika_plate",
+    action_space_info=FRANKA_IK_ACTION_SPACE,
+)
+
 
 @configclass
 class ObservationManagerCfg:
@@ -144,28 +167,11 @@ class HeaterTransferEnvCfg(MatterixBaseEnvCfg):
     workflows = {
         # Atomic, one entry per EOS DAG task node - what an EOS-facing caller dispatches
         # one at a time (see matterix_bridge/common/protocol_registry.py).
-        "turn_on_heater": TurnOnHeaterCfg(
-            asset_name="ika_plate",
-            value=True,
-            target_temperature=373.15,
-        ),
-        "pick_beaker": PickObjectCfg(
-            description="Pick up the beaker",
-            agent_assets="robot",
-            object="beaker",
-            action_space_info=FRANKA_IK_ACTION_SPACE,
-        ),
-        "place_beaker": PlaceObjectCfg(
-            description="Place the beaker on top of the IKA plate",
-            agent_assets="robot",
-            target="ika_plate",
-            action_space_info=FRANKA_IK_ACTION_SPACE,
-        ),
+        "turn_on_heater": TurnOnHeaterCfg(**_TURN_ON_HEATER_KWARGS),
+        "pick_beaker": PickObjectCfg(**_PICK_BEAKER_KWARGS),
+        "place_beaker": PlaceObjectCfg(**_PLACE_BEAKER_KWARGS),
         "wait_for_heat_transfer": WaitCfg(duration=10.0),
-        "turn_off_heater": TurnOnHeaterCfg(
-            asset_name="ika_plate",
-            value=False,
-        ),
+        "turn_off_heater": TurnOnHeaterCfg(**_TURN_OFF_HEATER_KWARGS),
         # Bundled convenience workflows for manual/dev CLI use.
         "observe_heating": [
             PickObjectCfg(
@@ -178,28 +184,11 @@ class HeaterTransferEnvCfg(MatterixBaseEnvCfg):
         ],
         "pickup_and_place": [
             WaitCfg(duration=2.0),  # baseline: observe ambient/plate heat transfer before touching anything
-            TurnOnHeaterCfg(
-                asset_name="ika_plate",
-                value=True,
-                target_temperature=373.15,
-            ),
-            PickObjectCfg(
-                description="Pick up the beaker",
-                agent_assets="robot",
-                object="beaker",
-                action_space_info=FRANKA_IK_ACTION_SPACE,
-            ),
-            PlaceObjectCfg(
-                description="Place the beaker on top of the IKA plate",
-                agent_assets="robot",
-                target="ika_plate",
-                action_space_info=FRANKA_IK_ACTION_SPACE,
-            ),
+            TurnOnHeaterCfg(**_TURN_ON_HEATER_KWARGS),
+            PickObjectCfg(**_PICK_BEAKER_KWARGS),
+            PlaceObjectCfg(**_PLACE_BEAKER_KWARGS),
             WaitCfg(duration=10.0),  # watch heat flow from the now-hot plate into the beaker
-            TurnOnHeaterCfg(
-                asset_name="ika_plate",
-                value=False,
-            ),
+            TurnOnHeaterCfg(**_TURN_OFF_HEATER_KWARGS),
             WaitCfg(duration=5.0),
         ],
     }
