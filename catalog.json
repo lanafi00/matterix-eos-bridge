@@ -1,0 +1,1906 @@
+{
+  "actions": {
+    "close_gripper": {
+      "class": "matterix_sm.primitive_actions.gripper.CloseGripperCfg",
+      "fields": {
+        "action_space_info": {
+          "annotation": "ActionSpaceInfo | None",
+          "default": null,
+          "required": false
+        },
+        "agent_assets": {
+          "annotation": "str | list[str]",
+          "required": true
+        },
+        "description": {
+          "annotation": "str",
+          "default": "",
+          "required": false
+        },
+        "duration": {
+          "annotation": "float",
+          "default": 2.0,
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list[SemanticInfo] | None",
+          "default": null,
+          "required": false
+        },
+        "target_value": {
+          "annotation": "float",
+          "default": -1.0,
+          "required": false
+        },
+        "timeout": {
+          "annotation": "float",
+          "default": 10.0,
+          "required": false
+        }
+      }
+    },
+    "gripper_action": {
+      "class": "matterix_sm.primitive_actions.gripper.GripperActionCfg",
+      "fields": {
+        "action_space_info": {
+          "annotation": "ActionSpaceInfo | None",
+          "default": null,
+          "required": false
+        },
+        "agent_assets": {
+          "annotation": "str | list[str]",
+          "required": true
+        },
+        "description": {
+          "annotation": "str",
+          "default": "",
+          "required": false
+        },
+        "duration": {
+          "annotation": "float",
+          "default": 2.0,
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list[SemanticInfo] | None",
+          "default": null,
+          "required": false
+        },
+        "target_value": {
+          "annotation": "float",
+          "required": true
+        },
+        "timeout": {
+          "annotation": "float",
+          "default": 10.0,
+          "required": false
+        }
+      }
+    },
+    "move_relative": {
+      "class": "matterix_sm.primitive_actions.move_relative.MoveRelativeCfg",
+      "fields": {
+        "action_space_info": {
+          "annotation": "ActionSpaceInfo | None",
+          "default": null,
+          "required": false
+        },
+        "agent_assets": {
+          "annotation": "str | list[str]",
+          "required": true
+        },
+        "description": {
+          "annotation": "str",
+          "default": "",
+          "required": false
+        },
+        "orientation_offset": {
+          "annotation": "tuple[float, float, float, float] | None",
+          "default": null,
+          "required": false
+        },
+        "orientation_threshold": {
+          "annotation": "float",
+          "default": 0.02,
+          "required": false
+        },
+        "position_offset": {
+          "annotation": "tuple[float, float, float] | None",
+          "default": null,
+          "required": false
+        },
+        "position_threshold": {
+          "annotation": "float",
+          "default": 0.01,
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list[SemanticInfo] | None",
+          "default": null,
+          "required": false
+        },
+        "settling_time": {
+          "annotation": "float",
+          "default": 0.05,
+          "required": false
+        },
+        "target_orientations": {
+          "annotation": "torch.Tensor | None",
+          "default": null,
+          "required": false
+        },
+        "target_positions": {
+          "annotation": "torch.Tensor | None",
+          "default": null,
+          "required": false
+        },
+        "timeout": {
+          "annotation": "float",
+          "default": 10.0,
+          "required": false
+        }
+      }
+    },
+    "move_to_frame": {
+      "class": "matterix_sm.primitive_actions.move_to_frame.MoveToFrameCfg",
+      "fields": {
+        "action_space_info": {
+          "annotation": "ActionSpaceInfo | None",
+          "default": null,
+          "required": false
+        },
+        "agent_assets": {
+          "annotation": "str | list[str]",
+          "required": true
+        },
+        "description": {
+          "annotation": "str",
+          "default": "",
+          "required": false
+        },
+        "frame": {
+          "annotation": "str",
+          "required": true
+        },
+        "object": {
+          "annotation": "str",
+          "required": true
+        },
+        "orientation_threshold": {
+          "annotation": "float",
+          "default": 0.02,
+          "required": false
+        },
+        "position_threshold": {
+          "annotation": "float",
+          "default": 0.01,
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list[SemanticInfo] | None",
+          "default": null,
+          "required": false
+        },
+        "settling_time": {
+          "annotation": "float",
+          "default": 0.05,
+          "required": false
+        },
+        "target_orientations": {
+          "annotation": "torch.Tensor | None",
+          "default": null,
+          "required": false
+        },
+        "target_positions": {
+          "annotation": "torch.Tensor | None",
+          "default": null,
+          "required": false
+        },
+        "timeout": {
+          "annotation": "float",
+          "default": 10.0,
+          "required": false
+        },
+        "use_frame_orientation": {
+          "annotation": "bool",
+          "default": true,
+          "required": false
+        }
+      }
+    },
+    "open_gripper": {
+      "class": "matterix_sm.primitive_actions.gripper.OpenGripperCfg",
+      "fields": {
+        "action_space_info": {
+          "annotation": "ActionSpaceInfo | None",
+          "default": null,
+          "required": false
+        },
+        "agent_assets": {
+          "annotation": "str | list[str]",
+          "required": true
+        },
+        "description": {
+          "annotation": "str",
+          "default": "",
+          "required": false
+        },
+        "duration": {
+          "annotation": "float",
+          "default": 2.0,
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list[SemanticInfo] | None",
+          "default": null,
+          "required": false
+        },
+        "target_value": {
+          "annotation": "float",
+          "default": 1.0,
+          "required": false
+        },
+        "timeout": {
+          "annotation": "float",
+          "default": 10.0,
+          "required": false
+        }
+      }
+    },
+    "pick_object": {
+      "class": "matterix_sm.compositional_actions.pick_object.PickObjectCfg",
+      "fields": {
+        "action_space_info": {
+          "annotation": "ActionSpaceInfo | None",
+          "default": null,
+          "required": false
+        },
+        "agent_assets": {
+          "annotation": "str | list[str]",
+          "required": true
+        },
+        "description": {
+          "annotation": "str",
+          "default": "",
+          "required": false
+        },
+        "object": {
+          "annotation": "str",
+          "required": true
+        },
+        "post_grasp_offset": {
+          "annotation": "tuple[float, float, float]",
+          "default": [
+            0.0,
+            0.0,
+            0.1
+          ],
+          "required": false
+        },
+        "sub_actions": {
+          "annotation": "list[ActionBaseCfg]",
+          "required": true
+        },
+        "verify_grasp": {
+          "annotation": "bool",
+          "default": false,
+          "required": false
+        }
+      }
+    },
+    "place_object": {
+      "class": "matterix_sm.compositional_actions.place_object.PlaceObjectCfg",
+      "fields": {
+        "action_space_info": {
+          "annotation": "ActionSpaceInfo | None",
+          "default": null,
+          "required": false
+        },
+        "agent_assets": {
+          "annotation": "str | list[str]",
+          "required": true
+        },
+        "description": {
+          "annotation": "str",
+          "default": "",
+          "required": false
+        },
+        "held_object": {
+          "annotation": "str | None",
+          "default": null,
+          "required": false
+        },
+        "post_place_offset": {
+          "annotation": "tuple[float, float, float]",
+          "default": [
+            0.0,
+            0.0,
+            0.1
+          ],
+          "required": false
+        },
+        "sub_actions": {
+          "annotation": "list[ActionBaseCfg]",
+          "required": true
+        },
+        "target": {
+          "annotation": "str",
+          "required": true
+        },
+        "verify_release": {
+          "annotation": "bool",
+          "default": false,
+          "required": false
+        }
+      }
+    },
+    "semantic_action": {
+      "class": "matterix_sm.primitive_actions.semantic_action.SemanticActionCfg",
+      "fields": {
+        "action_space_info": {
+          "annotation": "ActionSpaceInfo | None",
+          "default": null,
+          "required": false
+        },
+        "agent_assets": {
+          "annotation": "str | list[str]",
+          "default": [],
+          "required": false
+        },
+        "description": {
+          "annotation": "str",
+          "default": "",
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list[matterix_sm.semantic_info.SemanticInfo]",
+          "required": true
+        },
+        "timeout": {
+          "annotation": "float",
+          "default": 10.0,
+          "required": false
+        }
+      }
+    },
+    "turn_on_heater": {
+      "class": "matterix_sm.semantic_actions.heater_action.TurnOnHeaterCfg",
+      "fields": {
+        "action_space_info": {
+          "annotation": "ActionSpaceInfo | None",
+          "default": null,
+          "required": false
+        },
+        "agent_assets": {
+          "annotation": "str | list[str]",
+          "default": [],
+          "required": false
+        },
+        "asset_name": {
+          "annotation": "<class 'str'>",
+          "required": true
+        },
+        "description": {
+          "annotation": "str",
+          "default": "",
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list | None",
+          "default": null,
+          "required": false
+        },
+        "target_temperature": {
+          "annotation": "float | None",
+          "default": null,
+          "required": false
+        },
+        "timeout": {
+          "annotation": "float",
+          "default": 10.0,
+          "required": false
+        },
+        "value": {
+          "annotation": "<class 'bool'>",
+          "required": true
+        }
+      }
+    },
+    "verify_contact": {
+      "class": "matterix_sm.primitive_actions.verify_contact.VerifyContactCfg",
+      "fields": {
+        "action_space_info": {
+          "annotation": "ActionSpaceInfo | None",
+          "default": null,
+          "required": false
+        },
+        "agent_assets": {
+          "annotation": "str | list[str]",
+          "default": [],
+          "required": false
+        },
+        "description": {
+          "annotation": "str",
+          "default": "",
+          "required": false
+        },
+        "expected_contact": {
+          "annotation": "bool",
+          "default": true,
+          "required": false
+        },
+        "object": {
+          "annotation": "str",
+          "required": true
+        },
+        "semantics": {
+          "annotation": "list[SemanticInfo] | None",
+          "default": null,
+          "required": false
+        },
+        "settling_time": {
+          "annotation": "float",
+          "default": 0.1,
+          "required": false
+        },
+        "timeout": {
+          "annotation": "float",
+          "default": 10.0,
+          "required": false
+        }
+      }
+    },
+    "wait": {
+      "class": "matterix_sm.primitive_actions.wait.WaitCfg",
+      "fields": {
+        "action_space_info": {
+          "annotation": "ActionSpaceInfo | None",
+          "default": null,
+          "required": false
+        },
+        "agent_assets": {
+          "annotation": "str | list[str]",
+          "default": [],
+          "required": false
+        },
+        "description": {
+          "annotation": "str",
+          "default": "",
+          "required": false
+        },
+        "duration": {
+          "annotation": "<class 'float'>",
+          "required": true
+        },
+        "semantics": {
+          "annotation": "list[SemanticInfo] | None",
+          "default": null,
+          "required": false
+        },
+        "timeout": {
+          "annotation": "<class 'float'>",
+          "default": Infinity,
+          "required": false
+        }
+      }
+    }
+  },
+  "assets": {
+    "equipment/ika_plate_inst": {
+      "class": "matterix_assets.equipment.ika_plate.IKA_PLATE_INST_CFG",
+      "fields": {
+        "activate_contact_sensors": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "class_type": {
+          "annotation": "<class 'type'>",
+          "default_repr": "<class 'isaaclab.assets.rigid_object.rigid_object.RigidObject'>",
+          "required": false
+        },
+        "collision_group": {
+          "annotation": "typing.Literal[0, -1]",
+          "default": 0,
+          "required": false
+        },
+        "debug_vis": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "event_terms": {
+          "annotation": "dict[str, isaaclab.managers.manager_term_cfg.EventTermCfg]",
+          "default": {},
+          "required": false
+        },
+        "frames": {
+          "annotation": "dict[str, tuple[float, float, float] | isaaclab.sensors.frame_transformer.frame_transformer_cfg.OffsetCfg]",
+          "default": {
+            "place": [
+              0.0,
+              0.0,
+              0.13
+            ],
+            "post_place": [
+              0.0,
+              0.0,
+              0.25
+            ],
+            "pre_place": [
+              0.0,
+              0.0,
+              0.25
+            ]
+          },
+          "required": false
+        },
+        "init_state": {
+          "annotation": "<class 'isaaclab.assets.rigid_object.rigid_object_cfg.RigidObjectCfg.InitialStateCfg'>",
+          "default_repr": "RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0), lin_vel=(0.0, 0.0, 0.0), ang_vel=(0.0, 0.0, 0.0))",
+          "required": false
+        },
+        "mass": {
+          "annotation": "float | None",
+          "default": 1.0,
+          "required": false
+        },
+        "pos": {
+          "annotation": "tuple[float, float, float] | None",
+          "default": null,
+          "required": false
+        },
+        "prim_path": {
+          "annotation": "<class 'str'>",
+          "default": "{ENV_REGEX_NS}/RigidObjects_Equipment",
+          "required": false
+        },
+        "rot": {
+          "annotation": "tuple[float, float, float, float] | None",
+          "default": null,
+          "required": false
+        },
+        "scale": {
+          "annotation": "tuple[float, float, float] | None",
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "required": false
+        },
+        "semantic_tags": {
+          "annotation": "list[tuple]",
+          "default": [
+            [
+              "class",
+              "balance"
+            ]
+          ],
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list[SemanticCfg] | SemanticPreset",
+          "default": [],
+          "required": false
+        },
+        "sensors": {
+          "annotation": "dict[str, isaaclab.sensors.frame_transformer.frame_transformer_cfg.FrameTransformerCfg]",
+          "default": {},
+          "required": false
+        },
+        "spawn": {
+          "annotation": "isaaclab.sim.spawners.spawner_cfg.SpawnerCfg | None",
+          "default": null,
+          "required": false
+        },
+        "usd_path": {
+          "annotation": "<class 'str'>",
+          "default": "/home/lila/Documents/git/Matterix/source/matterix_assets/data/equipment/balance-heater-stirrer/IKA-plate-inst.usda",
+          "required": false
+        }
+      },
+      "kind": "object"
+    },
+    "infrastructure/table_seattle_inst": {
+      "class": "matterix_assets.infrastructure.tables.TABLE_SEATTLE_INST_Cfg",
+      "fields": {
+        "class_type": {
+          "annotation": "type[isaaclab.assets.asset_base.AssetBase]",
+          "default": null,
+          "required": false
+        },
+        "collision_group": {
+          "annotation": "typing.Literal[0, -1]",
+          "default": 0,
+          "required": false
+        },
+        "debug_vis": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "event_terms": {
+          "annotation": "dict[str, isaaclab.managers.manager_term_cfg.EventTermCfg]",
+          "default": {},
+          "required": false
+        },
+        "frames": {
+          "annotation": "dict[str, tuple[float, float, float] | isaaclab.sensors.frame_transformer.frame_transformer_cfg.OffsetCfg]",
+          "default": {},
+          "required": false
+        },
+        "init_state": {
+          "annotation": "<class 'isaaclab.assets.asset_base_cfg.AssetBaseCfg.InitialStateCfg'>",
+          "default_repr": "AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0))",
+          "required": false
+        },
+        "mass": {
+          "annotation": "float | None",
+          "default": 50.0,
+          "required": false
+        },
+        "pos": {
+          "annotation": "tuple[float, float, float] | None",
+          "default": null,
+          "required": false
+        },
+        "prim_path": {
+          "annotation": "<class 'str'>",
+          "default": "{ENV_REGEX_NS}/StaticObjects_Infrastructure",
+          "required": false
+        },
+        "rot": {
+          "annotation": "tuple[float, float, float, float] | None",
+          "default": [
+            0.707,
+            0,
+            0,
+            0.707
+          ],
+          "required": false
+        },
+        "scale": {
+          "annotation": "tuple[float, float, float] | None",
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "required": false
+        },
+        "semantic_tags": {
+          "annotation": "list[tuple]",
+          "default": [
+            [
+              "class",
+              "table"
+            ]
+          ],
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list[SemanticCfg] | SemanticPreset",
+          "default": [],
+          "required": false
+        },
+        "sensors": {
+          "annotation": "dict[str, isaaclab.sensors.frame_transformer.frame_transformer_cfg.FrameTransformerCfg]",
+          "default": {},
+          "required": false
+        },
+        "spawn": {
+          "annotation": "isaaclab.sim.spawners.spawner_cfg.SpawnerCfg | None",
+          "default": null,
+          "required": false
+        },
+        "usd_path": {
+          "annotation": "<class 'str'>",
+          "default": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Props/Mounts/SeattleLabTable/table_instanceable.usd",
+          "required": false
+        }
+      },
+      "kind": "object"
+    },
+    "infrastructure/table_thorlabs_75x90": {
+      "class": "matterix_assets.infrastructure.tables.TABLE_THORLABS_75X90_Cfg",
+      "fields": {
+        "class_type": {
+          "annotation": "type[isaaclab.assets.asset_base.AssetBase]",
+          "default": null,
+          "required": false
+        },
+        "collision_group": {
+          "annotation": "typing.Literal[0, -1]",
+          "default": 0,
+          "required": false
+        },
+        "debug_vis": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "event_terms": {
+          "annotation": "dict[str, isaaclab.managers.manager_term_cfg.EventTermCfg]",
+          "default": {},
+          "required": false
+        },
+        "frames": {
+          "annotation": "dict[str, tuple[float, float, float] | isaaclab.sensors.frame_transformer.frame_transformer_cfg.OffsetCfg]",
+          "default": {},
+          "required": false
+        },
+        "init_state": {
+          "annotation": "<class 'isaaclab.assets.asset_base_cfg.AssetBaseCfg.InitialStateCfg'>",
+          "default_repr": "AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0))",
+          "required": false
+        },
+        "mass": {
+          "annotation": "float | None",
+          "default": null,
+          "required": false
+        },
+        "pos": {
+          "annotation": "tuple[float, float, float] | None",
+          "default": null,
+          "required": false
+        },
+        "prim_path": {
+          "annotation": "<class 'str'>",
+          "default": "{ENV_REGEX_NS}/StaticObjects_Infrastructure",
+          "required": false
+        },
+        "rot": {
+          "annotation": "tuple[float, float, float, float] | None",
+          "default": null,
+          "required": false
+        },
+        "scale": {
+          "annotation": "tuple[float, float, float] | None",
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "required": false
+        },
+        "semantic_tags": {
+          "annotation": "list[tuple]",
+          "default": [
+            [
+              "class",
+              "table"
+            ]
+          ],
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list[SemanticCfg] | SemanticPreset",
+          "default": [],
+          "required": false
+        },
+        "sensors": {
+          "annotation": "dict[str, isaaclab.sensors.frame_transformer.frame_transformer_cfg.FrameTransformerCfg]",
+          "default": {},
+          "required": false
+        },
+        "spawn": {
+          "annotation": "isaaclab.sim.spawners.spawner_cfg.SpawnerCfg | None",
+          "default": null,
+          "required": false
+        },
+        "usd_path": {
+          "annotation": "<class 'str'>",
+          "default": "/home/lila/Documents/git/Matterix/source/matterix_assets/data/infrastructure/tables/table-thorlabs-75x90/table.usda",
+          "required": false
+        }
+      },
+      "kind": "object"
+    },
+    "infrastructure/table_thorlabs_75x90_inst": {
+      "class": "matterix_assets.infrastructure.tables.TABLE_THORLABS_75X90_INST_Cfg",
+      "fields": {
+        "class_type": {
+          "annotation": "type[isaaclab.assets.asset_base.AssetBase]",
+          "default": null,
+          "required": false
+        },
+        "collision_group": {
+          "annotation": "typing.Literal[0, -1]",
+          "default": 0,
+          "required": false
+        },
+        "debug_vis": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "event_terms": {
+          "annotation": "dict[str, isaaclab.managers.manager_term_cfg.EventTermCfg]",
+          "default": {},
+          "required": false
+        },
+        "frames": {
+          "annotation": "dict[str, tuple[float, float, float] | isaaclab.sensors.frame_transformer.frame_transformer_cfg.OffsetCfg]",
+          "default": {},
+          "required": false
+        },
+        "init_state": {
+          "annotation": "<class 'isaaclab.assets.asset_base_cfg.AssetBaseCfg.InitialStateCfg'>",
+          "default_repr": "AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0))",
+          "required": false
+        },
+        "mass": {
+          "annotation": "float | None",
+          "default": null,
+          "required": false
+        },
+        "pos": {
+          "annotation": "tuple[float, float, float] | None",
+          "default": null,
+          "required": false
+        },
+        "prim_path": {
+          "annotation": "<class 'str'>",
+          "default": "{ENV_REGEX_NS}/StaticObjects_Infrastructure",
+          "required": false
+        },
+        "rot": {
+          "annotation": "tuple[float, float, float, float] | None",
+          "default": null,
+          "required": false
+        },
+        "scale": {
+          "annotation": "tuple[float, float, float] | None",
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "required": false
+        },
+        "semantic_tags": {
+          "annotation": "list[tuple]",
+          "default": [
+            [
+              "class",
+              "table"
+            ]
+          ],
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list[SemanticCfg] | SemanticPreset",
+          "default": [],
+          "required": false
+        },
+        "sensors": {
+          "annotation": "dict[str, isaaclab.sensors.frame_transformer.frame_transformer_cfg.FrameTransformerCfg]",
+          "default": {},
+          "required": false
+        },
+        "spawn": {
+          "annotation": "isaaclab.sim.spawners.spawner_cfg.SpawnerCfg | None",
+          "default": null,
+          "required": false
+        },
+        "usd_path": {
+          "annotation": "<class 'str'>",
+          "default": "/home/lila/Documents/git/Matterix/source/matterix_assets/data/infrastructure/tables/table-thorlabs-75x90/table-inst.usda",
+          "required": false
+        }
+      },
+      "kind": "object"
+    },
+    "labware/beaker_500ml": {
+      "class": "matterix_assets.labware.beakers.BEAKER_500ML_CFG",
+      "fields": {
+        "activate_contact_sensors": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "class_type": {
+          "annotation": "<class 'type'>",
+          "default_repr": "<class 'isaaclab.assets.rigid_object.rigid_object.RigidObject'>",
+          "required": false
+        },
+        "collision_group": {
+          "annotation": "typing.Literal[0, -1]",
+          "default": 0,
+          "required": false
+        },
+        "debug_vis": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "event_terms": {
+          "annotation": "dict[str, isaaclab.managers.manager_term_cfg.EventTermCfg]",
+          "default": {},
+          "required": false
+        },
+        "frames": {
+          "annotation": "dict[str, tuple[float, float, float] | isaaclab.sensors.frame_transformer.frame_transformer_cfg.OffsetCfg]",
+          "default": {
+            "grasp": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "post_grasp": [
+              0.0,
+              0.0,
+              0.05
+            ],
+            "pre_grasp": [
+              0.0,
+              0.0,
+              0.04
+            ]
+          },
+          "required": false
+        },
+        "init_state": {
+          "annotation": "<class 'isaaclab.assets.rigid_object.rigid_object_cfg.RigidObjectCfg.InitialStateCfg'>",
+          "default_repr": "RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0), lin_vel=(0.0, 0.0, 0.0), ang_vel=(0.0, 0.0, 0.0))",
+          "required": false
+        },
+        "mass": {
+          "annotation": "float | None",
+          "default": 0.3,
+          "required": false
+        },
+        "pos": {
+          "annotation": "tuple[float, float, float] | None",
+          "default": null,
+          "required": false
+        },
+        "prim_path": {
+          "annotation": "<class 'str'>",
+          "default": "{ENV_REGEX_NS}/RigidObjects_Labware",
+          "required": false
+        },
+        "rot": {
+          "annotation": "tuple[float, float, float, float] | None",
+          "default": null,
+          "required": false
+        },
+        "scale": {
+          "annotation": "tuple[float, float, float] | None",
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "required": false
+        },
+        "semantic_tags": {
+          "annotation": "list[tuple]",
+          "default": [
+            [
+              "class",
+              "beaker"
+            ]
+          ],
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list[SemanticCfg] | SemanticPreset",
+          "default": [],
+          "required": false
+        },
+        "sensors": {
+          "annotation": "dict[str, isaaclab.sensors.frame_transformer.frame_transformer_cfg.FrameTransformerCfg]",
+          "default": {},
+          "required": false
+        },
+        "spawn": {
+          "annotation": "isaaclab.sim.spawners.spawner_cfg.SpawnerCfg | None",
+          "default": null,
+          "required": false
+        },
+        "usd_path": {
+          "annotation": "<class 'str'>",
+          "default": "/home/lila/Documents/git/Matterix/source/matterix_assets/data/labware/beaker500ml/beaker-500ml.usda",
+          "required": false
+        }
+      },
+      "kind": "object"
+    },
+    "labware/beaker_500ml_inst": {
+      "class": "matterix_assets.labware.beakers.BEAKER_500ML_INST_CFG",
+      "fields": {
+        "activate_contact_sensors": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "class_type": {
+          "annotation": "<class 'type'>",
+          "default_repr": "<class 'isaaclab.assets.rigid_object.rigid_object.RigidObject'>",
+          "required": false
+        },
+        "collision_group": {
+          "annotation": "typing.Literal[0, -1]",
+          "default": 0,
+          "required": false
+        },
+        "debug_vis": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "event_terms": {
+          "annotation": "dict[str, isaaclab.managers.manager_term_cfg.EventTermCfg]",
+          "default": {},
+          "required": false
+        },
+        "frames": {
+          "annotation": "dict[str, tuple[float, float, float] | isaaclab.sensors.frame_transformer.frame_transformer_cfg.OffsetCfg]",
+          "default": {
+            "grasp": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "post_grasp": [
+              0.0,
+              0.0,
+              0.05
+            ],
+            "pre_grasp": [
+              0.0,
+              0.0,
+              0.04
+            ]
+          },
+          "required": false
+        },
+        "init_state": {
+          "annotation": "<class 'isaaclab.assets.rigid_object.rigid_object_cfg.RigidObjectCfg.InitialStateCfg'>",
+          "default_repr": "RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0), lin_vel=(0.0, 0.0, 0.0), ang_vel=(0.0, 0.0, 0.0))",
+          "required": false
+        },
+        "mass": {
+          "annotation": "float | None",
+          "default": 0.3,
+          "required": false
+        },
+        "pos": {
+          "annotation": "tuple[float, float, float] | None",
+          "default": null,
+          "required": false
+        },
+        "prim_path": {
+          "annotation": "<class 'str'>",
+          "default": "{ENV_REGEX_NS}/RigidObjects_Labware",
+          "required": false
+        },
+        "rot": {
+          "annotation": "tuple[float, float, float, float] | None",
+          "default": null,
+          "required": false
+        },
+        "scale": {
+          "annotation": "tuple[float, float, float] | None",
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "required": false
+        },
+        "semantic_tags": {
+          "annotation": "list[tuple]",
+          "default": [
+            [
+              "class",
+              "beaker"
+            ]
+          ],
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list[SemanticCfg] | SemanticPreset",
+          "default": [],
+          "required": false
+        },
+        "sensors": {
+          "annotation": "dict[str, isaaclab.sensors.frame_transformer.frame_transformer_cfg.FrameTransformerCfg]",
+          "default": {},
+          "required": false
+        },
+        "spawn": {
+          "annotation": "isaaclab.sim.spawners.spawner_cfg.SpawnerCfg | None",
+          "default": null,
+          "required": false
+        },
+        "usd_path": {
+          "annotation": "<class 'str'>",
+          "default": "/home/lila/Documents/git/Matterix/source/matterix_assets/data/labware/beaker500ml/beaker-500ml-inst.usda",
+          "required": false
+        }
+      },
+      "kind": "object"
+    },
+    "robots/franka_panda": {
+      "class": "matterix_assets.robots.franka_arms.FRANKA_PANDA_CFG",
+      "fields": {
+        "action_terms": {
+          "annotation": "dict[str, isaaclab.managers.manager_term_cfg.ActionTermCfg]",
+          "default_repr": "{'arm_action': JointPositionActionCfg(class_type=<class 'isaaclab.envs.mdp.actions.joint_actions.JointPositionAction'>, asset_name=<dataclasses._MISSING_TYPE object at 0x7ab698e73650>, debug_vis=False, clip=None, joint_names=['panda_joint.*'], scale=0.5, offset=0.0, preserve_order=False, use_default_offset=True), 'gripper_action': BinaryJointPositionActionCfg(class_type=<class 'isaaclab.envs.mdp.actions.binary_joint_actions.BinaryJointPositionAction'>, asset_name=<dataclasses._MISSING_TYPE object at 0x7ab698e73990>, debug_vis=False, clip=None, joint_names=['panda_finger.*'], open_command_expr={'panda_finger_.*': 0.04}, close_command_expr={'panda_finger_.*': 0.0})}",
+          "required": false
+        },
+        "actuator_value_resolution_debug_print": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "actuators": {
+          "annotation": "dict[str, isaaclab.actuators.actuator_cfg.ActuatorBaseCfg]",
+          "default_repr": "{'panda_shoulder': ImplicitActuatorCfg(class_type=<class 'isaaclab.actuators.actuator_pd.ImplicitActuator'>, joint_names_expr=['panda_joint[1-4]'], effort_limit=87.0, velocity_limit=2.175, effort_limit_sim=None, velocity_limit_sim=None, stiffness=80.0, damping=4.0, armature=None, friction=None, dynamic_friction=None, viscous_friction=None), 'panda_forearm': ImplicitActuatorCfg(class_type=<class 'isaaclab.actuators.actuator_pd.ImplicitActuator'>, joint_names_expr=['panda_joint[5-7]'], effort_limit=12.0, velocity_limit=2.61, effort_limit_sim=None, velocity_limit_sim=None, stiffness=80.0, damping=4.0, armature=None, friction=None, dynamic_friction=None, viscous_friction=None), 'panda_hand': ImplicitActuatorCfg(class_type=<class 'isaaclab.actuators.actuator_pd.ImplicitActuator'>, joint_names_expr=['panda_finger_joint.*'], effort_limit=200.0, velocity_limit=0.2, effort_limit_sim=None, velocity_limit_sim=None, stiffness=500.0, damping=50.0, armature=None, friction=None, dynamic_friction=None, viscous_friction=None)}",
+          "required": false
+        },
+        "articulation_root_prim_path": {
+          "annotation": "str | None",
+          "default": null,
+          "required": false
+        },
+        "class_type": {
+          "annotation": "<class 'type'>",
+          "default_repr": "<class 'isaaclab.assets.articulation.articulation.Articulation'>",
+          "required": false
+        },
+        "collision_group": {
+          "annotation": "typing.Literal[0, -1]",
+          "default": 0,
+          "required": false
+        },
+        "debug_vis": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "event_terms": {
+          "annotation": "dict[str, isaaclab.managers.manager_term_cfg.EventTermCfg]",
+          "default_repr": "{'init_franka_arm_pose': EventTermCfg(func=<function set_default_joint_pose at 0x7ab4e649e660>, params={'default_pose': [0.0444, -0.1894, -0.1107, -2.5148, 0.0044, 2.3775, 0.6952, 0.04, 0.04]}, mode='startup', interval_range_s=None, is_global_time=False, min_step_count_between_reset=0), 'reset_franka_arm_pose': EventTermCfg(func=<function set_default_joint_pose at 0x7ab4e649e660>, params={'default_pose': [0.0444, -0.1894, -0.1107, -2.5148, 0.0044, 2.3775, 0.6952, 0.04, 0.04]}, mode='reset', interval_range_s=None, is_global_time=False, min_step_count_between_reset=0)}",
+          "required": false
+        },
+        "init_state": {
+          "annotation": "<class 'isaaclab.assets.articulation.articulation_cfg.ArticulationCfg.InitialStateCfg'>",
+          "default_repr": "ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0), lin_vel=(0.0, 0.0, 0.0), ang_vel=(0.0, 0.0, 0.0), joint_pos={'panda_joint1': 0.0, 'panda_joint2': -0.569, 'panda_joint3': 0.0, 'panda_joint4': -2.81, 'panda_joint5': 0.0, 'panda_joint6': 3.037, 'panda_joint7': 0.741, 'panda_finger_joint.*': 0.04}, joint_vel={'.*': 0.0})",
+          "required": false
+        },
+        "mass": {
+          "annotation": "float | None",
+          "default": 20.0,
+          "required": false
+        },
+        "pos": {
+          "annotation": "tuple[float, float, float]",
+          "default": null,
+          "required": false
+        },
+        "prim_path": {
+          "annotation": "<class 'str'>",
+          "default": "{ENV_REGEX_NS}/Articulations",
+          "required": false
+        },
+        "rot": {
+          "annotation": "tuple[float, float, float, float]",
+          "default": null,
+          "required": false
+        },
+        "semantic_tags": {
+          "annotation": "list[tuple]",
+          "default": [
+            [
+              "class",
+              "robot"
+            ]
+          ],
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list[SemanticCfg] | SemanticPreset",
+          "default": [],
+          "required": false
+        },
+        "sensors": {
+          "annotation": "dict[str, isaaclab.sensors.frame_transformer.frame_transformer_cfg.FrameTransformerCfg]",
+          "default_repr": "{'ee_frame': FrameTransformerCfg(class_type=<class 'isaaclab.sensors.frame_transformer.frame_transformer.FrameTransformer'>, prim_path='/panda_link0', update_period=0.0, history_length=0, debug_vis=False, source_frame_offset=OffsetCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0)), target_frames=[FrameTransformerCfg.FrameCfg(prim_path='/panda_hand', name='end_effector', offset=OffsetCfg(pos=(0.0, 0.0, 0.1034), rot=(1.0, 0.0, 0.0, 0.0)))], visualizer_cfg=VisualizationMarkersCfg(prim_path='/Visuals/FrameTransformer', markers={'frame': UsdFileCfg(func=<function spawn_from_usd at 0x7ab500aef9c0>, visible=True, semantic_tags=None, copy_from_source=True, mass_props=None, deformable_props=None, rigid_props=None, collision_props=None, activate_contact_sensors=False, scale=(0.1, 0.1, 0.1), articulation_props=None, fixed_tendons_props=None, spatial_tendons_props=None, joint_drive_props=None, visual_material_path='material', visual_material=None, usd_path='https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Props/UIElements/frame_prim.usd', variants=None), 'connecting_line': CylinderCfg(func=<function spawn_cylinder at 0x7ab4fefec860>, visible=True, semantic_tags=None, copy_from_source=True, mass_props=None, rigid_props=None, collision_props=None, activate_contact_sensors=False, visual_material_path='material', visual_material=PreviewSurfaceCfg(func=<function spawn_preview_surface at 0x7ab500b19800>, diffuse_color=(1.0, 1.0, 0.0), emissive_color=(0.0, 0.0, 0.0), roughness=1.0, metallic=0.0, opacity=1.0), physics_material_path='material', physics_material=None, radius=0.002, height=1.0, axis='Z')})), 'grasping_frame': FrameTransformerCfg(class_type=<class 'isaaclab.sensors.frame_transformer.frame_transformer.FrameTransformer'>, prim_path='/panda_link0', update_period=0.0, history_length=0, debug_vis=False, source_frame_offset=OffsetCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0)), target_frames=[FrameTransformerCfg.FrameCfg(prim_path='/panda_hand', name='grasping_frame', offset=OffsetCfg(pos=(0.0, 0.0, 0.1034), rot=(0.0, 1.0, 0.0, 0.0)))], visualizer_cfg=VisualizationMarkersCfg(prim_path='/Visuals/FrameTransformer', markers={'frame': UsdFileCfg(func=<function spawn_from_usd at 0x7ab500aef9c0>, visible=True, semantic_tags=None, copy_from_source=True, mass_props=None, deformable_props=None, rigid_props=None, collision_props=None, activate_contact_sensors=False, scale=(0.1, 0.1, 0.1), articulation_props=None, fixed_tendons_props=None, spatial_tendons_props=None, joint_drive_props=None, visual_material_path='material', visual_material=None, usd_path='https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Props/UIElements/frame_prim.usd', variants=None), 'connecting_line': CylinderCfg(func=<function spawn_cylinder at 0x7ab4fefec860>, visible=True, semantic_tags=None, copy_from_source=True, mass_props=None, rigid_props=None, collision_props=None, activate_contact_sensors=False, visual_material_path='material', visual_material=PreviewSurfaceCfg(func=<function spawn_preview_surface at 0x7ab500b19800>, diffuse_color=(1.0, 1.0, 0.0), emissive_color=(0.0, 0.0, 0.0), roughness=1.0, metallic=0.0, opacity=1.0), physics_material_path='material', physics_material=None, radius=0.002, height=1.0, axis='Z')}))}",
+          "required": false
+        },
+        "soft_joint_pos_limit_factor": {
+          "annotation": "<class 'float'>",
+          "default": 1.0,
+          "required": false
+        },
+        "spawn": {
+          "annotation": "isaaclab.sim.spawners.spawner_cfg.SpawnerCfg | None",
+          "default_repr": "UsdFileCfg(func=<function spawn_from_usd at 0x7ab500aef9c0>, visible=True, semantic_tags=None, copy_from_source=True, mass_props=None, deformable_props=None, rigid_props=RigidBodyPropertiesCfg(rigid_body_enabled=None, kinematic_enabled=None, disable_gravity=False, linear_damping=None, angular_damping=None, max_linear_velocity=None, max_angular_velocity=None, max_depenetration_velocity=5.0, max_contact_impulse=None, enable_gyroscopic_forces=None, retain_accelerations=None, solver_position_iteration_count=None, solver_velocity_iteration_count=None, sleep_threshold=None, stabilization_threshold=None), collision_props=None, activate_contact_sensors=False, scale=None, articulation_props=ArticulationRootPropertiesCfg(articulation_enabled=None, enabled_self_collisions=True, solver_position_iteration_count=8, solver_velocity_iteration_count=0, sleep_threshold=None, stabilization_threshold=None, fix_root_link=None), fixed_tendons_props=None, spatial_tendons_props=None, joint_drive_props=None, visual_material_path='material', visual_material=None, usd_path='https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/IsaacLab/Robots/FrankaEmika/panda_instanceable.usd', variants=None)",
+          "required": false
+        }
+      },
+      "kind": "articulated"
+    },
+    "robots/franka_panda_high_pd": {
+      "class": "matterix_assets.robots.franka_arms.FRANKA_PANDA_HIGH_PD_CFG",
+      "fields": {
+        "action_terms": {
+          "annotation": "dict[str, isaaclab.managers.manager_term_cfg.ActionTermCfg]",
+          "default_repr": "{'arm_action': JointPositionActionCfg(class_type=<class 'isaaclab.envs.mdp.actions.joint_actions.JointPositionAction'>, asset_name=<dataclasses._MISSING_TYPE object at 0x7ab698e73a10>, debug_vis=False, clip=None, joint_names=['panda_joint.*'], scale=0.5, offset=0.0, preserve_order=False, use_default_offset=True), 'gripper_action': BinaryJointPositionActionCfg(class_type=<class 'isaaclab.envs.mdp.actions.binary_joint_actions.BinaryJointPositionAction'>, asset_name=<dataclasses._MISSING_TYPE object at 0x7ab698e73050>, debug_vis=False, clip=None, joint_names=['panda_finger.*'], open_command_expr={'panda_finger_.*': 0.04}, close_command_expr={'panda_finger_.*': 0.0})}",
+          "required": false
+        },
+        "actuator_value_resolution_debug_print": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "actuators": {
+          "annotation": "dict[str, isaaclab.actuators.actuator_cfg.ActuatorBaseCfg]",
+          "default_repr": "{'panda_shoulder': ImplicitActuatorCfg(class_type=<class 'isaaclab.actuators.actuator_pd.ImplicitActuator'>, joint_names_expr=['panda_joint[1-4]'], effort_limit=87.0, velocity_limit=2.175, effort_limit_sim=None, velocity_limit_sim=None, stiffness=400.0, damping=80.0, armature=None, friction=None, dynamic_friction=None, viscous_friction=None), 'panda_forearm': ImplicitActuatorCfg(class_type=<class 'isaaclab.actuators.actuator_pd.ImplicitActuator'>, joint_names_expr=['panda_joint[5-7]'], effort_limit=12.0, velocity_limit=2.61, effort_limit_sim=None, velocity_limit_sim=None, stiffness=400.0, damping=80.0, armature=None, friction=None, dynamic_friction=None, viscous_friction=None), 'panda_hand': ImplicitActuatorCfg(class_type=<class 'isaaclab.actuators.actuator_pd.ImplicitActuator'>, joint_names_expr=['panda_finger_joint.*'], effort_limit=200.0, velocity_limit=0.2, effort_limit_sim=None, velocity_limit_sim=None, stiffness=500.0, damping=50.0, armature=None, friction=None, dynamic_friction=None, viscous_friction=None)}",
+          "required": false
+        },
+        "articulation_root_prim_path": {
+          "annotation": "str | None",
+          "default": null,
+          "required": false
+        },
+        "class_type": {
+          "annotation": "<class 'type'>",
+          "default_repr": "<class 'isaaclab.assets.articulation.articulation.Articulation'>",
+          "required": false
+        },
+        "collision_group": {
+          "annotation": "typing.Literal[0, -1]",
+          "default": 0,
+          "required": false
+        },
+        "debug_vis": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "event_terms": {
+          "annotation": "dict[str, isaaclab.managers.manager_term_cfg.EventTermCfg]",
+          "default_repr": "{'init_franka_arm_pose': EventTermCfg(func=<function set_default_joint_pose at 0x7ab4e649e660>, params={'default_pose': [0.0444, -0.1894, -0.1107, -2.5148, 0.0044, 2.3775, 0.6952, 0.04, 0.04]}, mode='startup', interval_range_s=None, is_global_time=False, min_step_count_between_reset=0), 'reset_franka_arm_pose': EventTermCfg(func=<function set_default_joint_pose at 0x7ab4e649e660>, params={'default_pose': [0.0444, -0.1894, -0.1107, -2.5148, 0.0044, 2.3775, 0.6952, 0.04, 0.04]}, mode='reset', interval_range_s=None, is_global_time=False, min_step_count_between_reset=0)}",
+          "required": false
+        },
+        "init_state": {
+          "annotation": "<class 'isaaclab.assets.articulation.articulation_cfg.ArticulationCfg.InitialStateCfg'>",
+          "default_repr": "ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0), lin_vel=(0.0, 0.0, 0.0), ang_vel=(0.0, 0.0, 0.0), joint_pos={'panda_joint1': 0.0, 'panda_joint2': -0.569, 'panda_joint3': 0.0, 'panda_joint4': -2.81, 'panda_joint5': 0.0, 'panda_joint6': 3.037, 'panda_joint7': 0.741, 'panda_finger_joint.*': 0.04}, joint_vel={'.*': 0.0})",
+          "required": false
+        },
+        "mass": {
+          "annotation": "float | None",
+          "default": 20.0,
+          "required": false
+        },
+        "pos": {
+          "annotation": "tuple[float, float, float]",
+          "default": null,
+          "required": false
+        },
+        "prim_path": {
+          "annotation": "<class 'str'>",
+          "default": "{ENV_REGEX_NS}/Articulations",
+          "required": false
+        },
+        "rot": {
+          "annotation": "tuple[float, float, float, float]",
+          "default": null,
+          "required": false
+        },
+        "semantic_tags": {
+          "annotation": "list[tuple]",
+          "default": [
+            [
+              "class",
+              "robot"
+            ]
+          ],
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list[SemanticCfg] | SemanticPreset",
+          "default": [],
+          "required": false
+        },
+        "sensors": {
+          "annotation": "dict[str, isaaclab.sensors.frame_transformer.frame_transformer_cfg.FrameTransformerCfg]",
+          "default_repr": "{'ee_frame': FrameTransformerCfg(class_type=<class 'isaaclab.sensors.frame_transformer.frame_transformer.FrameTransformer'>, prim_path='/panda_link0', update_period=0.0, history_length=0, debug_vis=False, source_frame_offset=OffsetCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0)), target_frames=[FrameTransformerCfg.FrameCfg(prim_path='/panda_hand', name='end_effector', offset=OffsetCfg(pos=(0.0, 0.0, 0.1034), rot=(1.0, 0.0, 0.0, 0.0)))], visualizer_cfg=VisualizationMarkersCfg(prim_path='/Visuals/FrameTransformer', markers={'frame': UsdFileCfg(func=<function spawn_from_usd at 0x7ab500aef9c0>, visible=True, semantic_tags=None, copy_from_source=True, mass_props=None, deformable_props=None, rigid_props=None, collision_props=None, activate_contact_sensors=False, scale=(0.1, 0.1, 0.1), articulation_props=None, fixed_tendons_props=None, spatial_tendons_props=None, joint_drive_props=None, visual_material_path='material', visual_material=None, usd_path='https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Props/UIElements/frame_prim.usd', variants=None), 'connecting_line': CylinderCfg(func=<function spawn_cylinder at 0x7ab4fefec860>, visible=True, semantic_tags=None, copy_from_source=True, mass_props=None, rigid_props=None, collision_props=None, activate_contact_sensors=False, visual_material_path='material', visual_material=PreviewSurfaceCfg(func=<function spawn_preview_surface at 0x7ab500b19800>, diffuse_color=(1.0, 1.0, 0.0), emissive_color=(0.0, 0.0, 0.0), roughness=1.0, metallic=0.0, opacity=1.0), physics_material_path='material', physics_material=None, radius=0.002, height=1.0, axis='Z')})), 'grasping_frame': FrameTransformerCfg(class_type=<class 'isaaclab.sensors.frame_transformer.frame_transformer.FrameTransformer'>, prim_path='/panda_link0', update_period=0.0, history_length=0, debug_vis=False, source_frame_offset=OffsetCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0)), target_frames=[FrameTransformerCfg.FrameCfg(prim_path='/panda_hand', name='grasping_frame', offset=OffsetCfg(pos=(0.0, 0.0, 0.1034), rot=(0.0, 1.0, 0.0, 0.0)))], visualizer_cfg=VisualizationMarkersCfg(prim_path='/Visuals/FrameTransformer', markers={'frame': UsdFileCfg(func=<function spawn_from_usd at 0x7ab500aef9c0>, visible=True, semantic_tags=None, copy_from_source=True, mass_props=None, deformable_props=None, rigid_props=None, collision_props=None, activate_contact_sensors=False, scale=(0.1, 0.1, 0.1), articulation_props=None, fixed_tendons_props=None, spatial_tendons_props=None, joint_drive_props=None, visual_material_path='material', visual_material=None, usd_path='https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Props/UIElements/frame_prim.usd', variants=None), 'connecting_line': CylinderCfg(func=<function spawn_cylinder at 0x7ab4fefec860>, visible=True, semantic_tags=None, copy_from_source=True, mass_props=None, rigid_props=None, collision_props=None, activate_contact_sensors=False, visual_material_path='material', visual_material=PreviewSurfaceCfg(func=<function spawn_preview_surface at 0x7ab500b19800>, diffuse_color=(1.0, 1.0, 0.0), emissive_color=(0.0, 0.0, 0.0), roughness=1.0, metallic=0.0, opacity=1.0), physics_material_path='material', physics_material=None, radius=0.002, height=1.0, axis='Z')}))}",
+          "required": false
+        },
+        "soft_joint_pos_limit_factor": {
+          "annotation": "<class 'float'>",
+          "default": 1.0,
+          "required": false
+        },
+        "spawn": {
+          "annotation": "isaaclab.sim.spawners.spawner_cfg.SpawnerCfg | None",
+          "default_repr": "UsdFileCfg(func=<function spawn_from_usd at 0x7ab500aef9c0>, visible=True, semantic_tags=None, copy_from_source=True, mass_props=None, deformable_props=None, rigid_props=RigidBodyPropertiesCfg(rigid_body_enabled=None, kinematic_enabled=None, disable_gravity=True, linear_damping=None, angular_damping=None, max_linear_velocity=None, max_angular_velocity=None, max_depenetration_velocity=5.0, max_contact_impulse=None, enable_gyroscopic_forces=None, retain_accelerations=None, solver_position_iteration_count=None, solver_velocity_iteration_count=None, sleep_threshold=None, stabilization_threshold=None), collision_props=None, activate_contact_sensors=False, scale=None, articulation_props=ArticulationRootPropertiesCfg(articulation_enabled=None, enabled_self_collisions=True, solver_position_iteration_count=8, solver_velocity_iteration_count=0, sleep_threshold=None, stabilization_threshold=None, fix_root_link=None), fixed_tendons_props=None, spatial_tendons_props=None, joint_drive_props=None, visual_material_path='material', visual_material=None, usd_path='https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/IsaacLab/Robots/FrankaEmika/panda_instanceable.usd', variants=None)",
+          "required": false
+        }
+      },
+      "kind": "articulated"
+    },
+    "robots/franka_panda_high_pd_ik": {
+      "class": "matterix_assets.robots.franka_arms.FRANKA_PANDA_HIGH_PD_IK_CFG",
+      "fields": {
+        "action_terms": {
+          "annotation": "dict[str, isaaclab.managers.manager_term_cfg.ActionTermCfg]",
+          "default_repr": "{'arm_action': DifferentialInverseKinematicsActionCfg(class_type=<class 'isaaclab.envs.mdp.actions.task_space_actions.DifferentialInverseKinematicsAction'>, asset_name='robot', debug_vis=False, clip=None, joint_names=['panda_joint.*'], body_name='panda_hand', body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=(0.0, 0.0, 0.107), rot=(1.0, 0.0, 0.0, 0.0)), scale=1.0, controller=DifferentialIKControllerCfg(class_type=<class 'isaaclab.controllers.differential_ik.DifferentialIKController'>, command_type='pose', use_relative_mode=False, ik_method='dls', ik_params={'lambda_val': 0.01})), 'gripper_action': BinaryJointPositionActionCfg(class_type=<class 'isaaclab.envs.mdp.actions.binary_joint_actions.BinaryJointPositionAction'>, asset_name=<dataclasses._MISSING_TYPE object at 0x7ab698e73210>, debug_vis=False, clip=None, joint_names=['panda_finger.*'], open_command_expr={'panda_finger_.*': 0.04}, close_command_expr={'panda_finger_.*': 0.0})}",
+          "required": false
+        },
+        "actuator_value_resolution_debug_print": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "actuators": {
+          "annotation": "dict[str, isaaclab.actuators.actuator_cfg.ActuatorBaseCfg]",
+          "default_repr": "{'panda_shoulder': ImplicitActuatorCfg(class_type=<class 'isaaclab.actuators.actuator_pd.ImplicitActuator'>, joint_names_expr=['panda_joint[1-4]'], effort_limit=87.0, velocity_limit=2.175, effort_limit_sim=None, velocity_limit_sim=None, stiffness=400.0, damping=80.0, armature=None, friction=None, dynamic_friction=None, viscous_friction=None), 'panda_forearm': ImplicitActuatorCfg(class_type=<class 'isaaclab.actuators.actuator_pd.ImplicitActuator'>, joint_names_expr=['panda_joint[5-7]'], effort_limit=12.0, velocity_limit=2.61, effort_limit_sim=None, velocity_limit_sim=None, stiffness=400.0, damping=80.0, armature=None, friction=None, dynamic_friction=None, viscous_friction=None), 'panda_hand': ImplicitActuatorCfg(class_type=<class 'isaaclab.actuators.actuator_pd.ImplicitActuator'>, joint_names_expr=['panda_finger_joint.*'], effort_limit=200.0, velocity_limit=0.2, effort_limit_sim=None, velocity_limit_sim=None, stiffness=500.0, damping=50.0, armature=None, friction=None, dynamic_friction=None, viscous_friction=None)}",
+          "required": false
+        },
+        "articulation_root_prim_path": {
+          "annotation": "str | None",
+          "default": null,
+          "required": false
+        },
+        "class_type": {
+          "annotation": "<class 'type'>",
+          "default_repr": "<class 'isaaclab.assets.articulation.articulation.Articulation'>",
+          "required": false
+        },
+        "collision_group": {
+          "annotation": "typing.Literal[0, -1]",
+          "default": 0,
+          "required": false
+        },
+        "debug_vis": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "event_terms": {
+          "annotation": "dict[str, isaaclab.managers.manager_term_cfg.EventTermCfg]",
+          "default_repr": "{'init_franka_arm_pose': EventTermCfg(func=<function set_default_joint_pose at 0x7ab4e649e660>, params={'default_pose': [0.0444, -0.1894, -0.1107, -2.5148, 0.0044, 2.3775, 0.6952, 0.04, 0.04]}, mode='startup', interval_range_s=None, is_global_time=False, min_step_count_between_reset=0), 'reset_franka_arm_pose': EventTermCfg(func=<function set_default_joint_pose at 0x7ab4e649e660>, params={'default_pose': [0.0444, -0.1894, -0.1107, -2.5148, 0.0044, 2.3775, 0.6952, 0.04, 0.04]}, mode='reset', interval_range_s=None, is_global_time=False, min_step_count_between_reset=0)}",
+          "required": false
+        },
+        "init_state": {
+          "annotation": "<class 'isaaclab.assets.articulation.articulation_cfg.ArticulationCfg.InitialStateCfg'>",
+          "default_repr": "ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0), lin_vel=(0.0, 0.0, 0.0), ang_vel=(0.0, 0.0, 0.0), joint_pos={'panda_joint1': 0.0, 'panda_joint2': -0.569, 'panda_joint3': 0.0, 'panda_joint4': -2.81, 'panda_joint5': 0.0, 'panda_joint6': 3.037, 'panda_joint7': 0.741, 'panda_finger_joint.*': 0.04}, joint_vel={'.*': 0.0})",
+          "required": false
+        },
+        "mass": {
+          "annotation": "float | None",
+          "default": 20.0,
+          "required": false
+        },
+        "pos": {
+          "annotation": "tuple[float, float, float]",
+          "default": null,
+          "required": false
+        },
+        "prim_path": {
+          "annotation": "<class 'str'>",
+          "default": "{ENV_REGEX_NS}/Articulations",
+          "required": false
+        },
+        "rot": {
+          "annotation": "tuple[float, float, float, float]",
+          "default": null,
+          "required": false
+        },
+        "semantic_tags": {
+          "annotation": "list[tuple]",
+          "default": [
+            [
+              "class",
+              "robot"
+            ]
+          ],
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list[SemanticCfg] | SemanticPreset",
+          "default": [],
+          "required": false
+        },
+        "sensors": {
+          "annotation": "dict[str, isaaclab.sensors.frame_transformer.frame_transformer_cfg.FrameTransformerCfg]",
+          "default_repr": "{'ee_frame': FrameTransformerCfg(class_type=<class 'isaaclab.sensors.frame_transformer.frame_transformer.FrameTransformer'>, prim_path='/panda_link0', update_period=0.0, history_length=0, debug_vis=False, source_frame_offset=OffsetCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0)), target_frames=[FrameTransformerCfg.FrameCfg(prim_path='/panda_hand', name='end_effector', offset=OffsetCfg(pos=(0.0, 0.0, 0.1034), rot=(1.0, 0.0, 0.0, 0.0)))], visualizer_cfg=VisualizationMarkersCfg(prim_path='/Visuals/FrameTransformer', markers={'frame': UsdFileCfg(func=<function spawn_from_usd at 0x7ab500aef9c0>, visible=True, semantic_tags=None, copy_from_source=True, mass_props=None, deformable_props=None, rigid_props=None, collision_props=None, activate_contact_sensors=False, scale=(0.1, 0.1, 0.1), articulation_props=None, fixed_tendons_props=None, spatial_tendons_props=None, joint_drive_props=None, visual_material_path='material', visual_material=None, usd_path='https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Props/UIElements/frame_prim.usd', variants=None), 'connecting_line': CylinderCfg(func=<function spawn_cylinder at 0x7ab4fefec860>, visible=True, semantic_tags=None, copy_from_source=True, mass_props=None, rigid_props=None, collision_props=None, activate_contact_sensors=False, visual_material_path='material', visual_material=PreviewSurfaceCfg(func=<function spawn_preview_surface at 0x7ab500b19800>, diffuse_color=(1.0, 1.0, 0.0), emissive_color=(0.0, 0.0, 0.0), roughness=1.0, metallic=0.0, opacity=1.0), physics_material_path='material', physics_material=None, radius=0.002, height=1.0, axis='Z')})), 'grasping_frame': FrameTransformerCfg(class_type=<class 'isaaclab.sensors.frame_transformer.frame_transformer.FrameTransformer'>, prim_path='/panda_link0', update_period=0.0, history_length=0, debug_vis=False, source_frame_offset=OffsetCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0)), target_frames=[FrameTransformerCfg.FrameCfg(prim_path='/panda_hand', name='grasping_frame', offset=OffsetCfg(pos=(0.0, 0.0, 0.1034), rot=(0.0, 1.0, 0.0, 0.0)))], visualizer_cfg=VisualizationMarkersCfg(prim_path='/Visuals/FrameTransformer', markers={'frame': UsdFileCfg(func=<function spawn_from_usd at 0x7ab500aef9c0>, visible=True, semantic_tags=None, copy_from_source=True, mass_props=None, deformable_props=None, rigid_props=None, collision_props=None, activate_contact_sensors=False, scale=(0.1, 0.1, 0.1), articulation_props=None, fixed_tendons_props=None, spatial_tendons_props=None, joint_drive_props=None, visual_material_path='material', visual_material=None, usd_path='https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Props/UIElements/frame_prim.usd', variants=None), 'connecting_line': CylinderCfg(func=<function spawn_cylinder at 0x7ab4fefec860>, visible=True, semantic_tags=None, copy_from_source=True, mass_props=None, rigid_props=None, collision_props=None, activate_contact_sensors=False, visual_material_path='material', visual_material=PreviewSurfaceCfg(func=<function spawn_preview_surface at 0x7ab500b19800>, diffuse_color=(1.0, 1.0, 0.0), emissive_color=(0.0, 0.0, 0.0), roughness=1.0, metallic=0.0, opacity=1.0), physics_material_path='material', physics_material=None, radius=0.002, height=1.0, axis='Z')}))}",
+          "required": false
+        },
+        "soft_joint_pos_limit_factor": {
+          "annotation": "<class 'float'>",
+          "default": 1.0,
+          "required": false
+        },
+        "spawn": {
+          "annotation": "isaaclab.sim.spawners.spawner_cfg.SpawnerCfg | None",
+          "default_repr": "UsdFileCfg(func=<function spawn_from_usd at 0x7ab500aef9c0>, visible=True, semantic_tags=None, copy_from_source=True, mass_props=None, deformable_props=None, rigid_props=RigidBodyPropertiesCfg(rigid_body_enabled=None, kinematic_enabled=None, disable_gravity=True, linear_damping=None, angular_damping=None, max_linear_velocity=None, max_angular_velocity=None, max_depenetration_velocity=5.0, max_contact_impulse=None, enable_gyroscopic_forces=None, retain_accelerations=None, solver_position_iteration_count=None, solver_velocity_iteration_count=None, sleep_threshold=None, stabilization_threshold=None), collision_props=None, activate_contact_sensors=False, scale=None, articulation_props=ArticulationRootPropertiesCfg(articulation_enabled=None, enabled_self_collisions=True, solver_position_iteration_count=8, solver_velocity_iteration_count=0, sleep_threshold=None, stabilization_threshold=None, fix_root_link=None), fixed_tendons_props=None, spatial_tendons_props=None, joint_drive_props=None, visual_material_path='material', visual_material=None, usd_path='https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/IsaacLab/Robots/FrankaEmika/panda_instanceable.usd', variants=None)",
+          "required": false
+        }
+      },
+      "kind": "articulated"
+    },
+    "robots/franka_roboti2f85_inst": {
+      "class": "matterix_assets.robots.franka_arms.FRANKA_ROBOTI2F85_INST_CFG",
+      "fields": {
+        "action_terms": {
+          "annotation": "dict[str, isaaclab.managers.manager_term_cfg.ActionTermCfg]",
+          "default_repr": "{'arm_action': JointPositionActionCfg(class_type=<class 'isaaclab.envs.mdp.actions.joint_actions.JointPositionAction'>, asset_name=<dataclasses._MISSING_TYPE object at 0x7ab698fdf650>, debug_vis=False, clip=None, joint_names=['panda_joint.*'], scale=0.5, offset=0.0, preserve_order=False, use_default_offset=True), 'gripper_action': JointPositionActionCfg(class_type=<class 'isaaclab.envs.mdp.actions.joint_actions.JointPositionAction'>, asset_name=<dataclasses._MISSING_TYPE object at 0x7ab698fdf910>, debug_vis=False, clip=None, joint_names=['finger_joint'], scale=1.0, offset=0.0, preserve_order=False, use_default_offset=True)}",
+          "required": false
+        },
+        "actuator_value_resolution_debug_print": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "actuators": {
+          "annotation": "dict[str, isaaclab.actuators.actuator_cfg.ActuatorBaseCfg]",
+          "default_repr": "{'panda_shoulder': ImplicitActuatorCfg(class_type=<class 'isaaclab.actuators.actuator_pd.ImplicitActuator'>, joint_names_expr=['panda_joint[1-4]'], effort_limit=None, velocity_limit=None, effort_limit_sim=87.0, velocity_limit_sim=2.175, stiffness=80.0, damping=4.0, armature=None, friction=None, dynamic_friction=None, viscous_friction=None), 'panda_forearm': ImplicitActuatorCfg(class_type=<class 'isaaclab.actuators.actuator_pd.ImplicitActuator'>, joint_names_expr=['panda_joint[5-7]'], effort_limit=None, velocity_limit=None, effort_limit_sim=12.0, velocity_limit_sim=2.61, stiffness=80.0, damping=4.0, armature=None, friction=None, dynamic_friction=None, viscous_friction=None), 'robotiq_gripper': ImplicitActuatorCfg(class_type=<class 'isaaclab.actuators.actuator_pd.ImplicitActuator'>, joint_names_expr=['finger_joint'], effort_limit=None, velocity_limit=None, effort_limit_sim=200.0, velocity_limit_sim=0.2, stiffness=2000.0, damping=100.0, armature=None, friction=None, dynamic_friction=None, viscous_friction=None)}",
+          "required": false
+        },
+        "articulation_root_prim_path": {
+          "annotation": "str | None",
+          "default": null,
+          "required": false
+        },
+        "class_type": {
+          "annotation": "<class 'type'>",
+          "default_repr": "<class 'isaaclab.assets.articulation.articulation.Articulation'>",
+          "required": false
+        },
+        "collision_group": {
+          "annotation": "typing.Literal[0, -1]",
+          "default": 0,
+          "required": false
+        },
+        "debug_vis": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "event_terms": {
+          "annotation": "dict[str, isaaclab.managers.manager_term_cfg.EventTermCfg]",
+          "default_repr": "{'init_franka_arm_pose': EventTermCfg(func=<function set_default_joint_pose at 0x7ab4e649e660>, params={'default_pose': [0.0444, -0.1894, -0.1107, -2.5148, 0.0044, 2.3775, 0.6952, 0.0]}, mode='startup', interval_range_s=None, is_global_time=False, min_step_count_between_reset=0), 'randomize_franka_joint_state': EventTermCfg(func=<function randomize_joint_by_gaussian_offset at 0x7ab4e649e700>, params={'mean': 0.0, 'std': 0.02}, mode='reset', interval_range_s=None, is_global_time=False, min_step_count_between_reset=0)}",
+          "required": false
+        },
+        "init_state": {
+          "annotation": "<class 'isaaclab.assets.articulation.articulation_cfg.ArticulationCfg.InitialStateCfg'>",
+          "default_repr": "ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0), lin_vel=(0.0, 0.0, 0.0), ang_vel=(0.0, 0.0, 0.0), joint_pos={'panda_joint1': 0.0, 'panda_joint2': -0.569, 'panda_joint3': 0.0, 'panda_joint4': -2.81, 'panda_joint5': 0.0, 'panda_joint6': 3.037, 'panda_joint7': 0.741, 'finger_joint': 0.0}, joint_vel={'.*': 0.0})",
+          "required": false
+        },
+        "mass": {
+          "annotation": "float | None",
+          "default": null,
+          "required": false
+        },
+        "pos": {
+          "annotation": "tuple[float, float, float]",
+          "default": null,
+          "required": false
+        },
+        "prim_path": {
+          "annotation": "<class 'str'>",
+          "default": "{ENV_REGEX_NS}/Articulations",
+          "required": false
+        },
+        "rot": {
+          "annotation": "tuple[float, float, float, float]",
+          "default": null,
+          "required": false
+        },
+        "semantic_tags": {
+          "annotation": "list[tuple]",
+          "default": [
+            [
+              "class",
+              "robot"
+            ]
+          ],
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list[SemanticCfg] | SemanticPreset",
+          "default": [],
+          "required": false
+        },
+        "sensors": {
+          "annotation": "dict[str, isaaclab.sensors.frame_transformer.frame_transformer_cfg.FrameTransformerCfg]",
+          "default": {},
+          "required": false
+        },
+        "soft_joint_pos_limit_factor": {
+          "annotation": "<class 'float'>",
+          "default": 1.0,
+          "required": false
+        },
+        "spawn": {
+          "annotation": "isaaclab.sim.spawners.spawner_cfg.SpawnerCfg | None",
+          "default_repr": "UsdFileCfg(func=<function spawn_from_usd at 0x7ab500aef9c0>, visible=True, semantic_tags=None, copy_from_source=True, mass_props=None, deformable_props=None, rigid_props=RigidBodyPropertiesCfg(rigid_body_enabled=None, kinematic_enabled=None, disable_gravity=False, linear_damping=None, angular_damping=None, max_linear_velocity=None, max_angular_velocity=None, max_depenetration_velocity=5.0, max_contact_impulse=None, enable_gyroscopic_forces=None, retain_accelerations=None, solver_position_iteration_count=None, solver_velocity_iteration_count=None, sleep_threshold=None, stabilization_threshold=None), collision_props=None, activate_contact_sensors=False, scale=None, articulation_props=ArticulationRootPropertiesCfg(articulation_enabled=None, enabled_self_collisions=True, solver_position_iteration_count=8, solver_velocity_iteration_count=0, sleep_threshold=None, stabilization_threshold=None, fix_root_link=None), fixed_tendons_props=None, spatial_tendons_props=None, joint_drive_props=None, visual_material_path='material', visual_material=None, usd_path='/home/lila/Documents/git/Matterix/source/matterix_assets/data/robots/franka/franka-robotiq85/franka-robotiq85-inst.usd', variants=None)",
+          "required": false
+        }
+      },
+      "kind": "articulated"
+    },
+    "robots/franka_robotiq2f85_inst_high_pd": {
+      "class": "matterix_assets.robots.franka_arms.FRANKA_ROBOTIQ2F85_INST_HIGH_PD_CFG",
+      "fields": {
+        "action_terms": {
+          "annotation": "dict[str, isaaclab.managers.manager_term_cfg.ActionTermCfg]",
+          "default_repr": "{'arm_action': JointPositionActionCfg(class_type=<class 'isaaclab.envs.mdp.actions.joint_actions.JointPositionAction'>, asset_name=<dataclasses._MISSING_TYPE object at 0x7ab698fdee50>, debug_vis=False, clip=None, joint_names=['panda_joint.*'], scale=0.5, offset=0.0, preserve_order=False, use_default_offset=True), 'gripper_action': JointPositionActionCfg(class_type=<class 'isaaclab.envs.mdp.actions.joint_actions.JointPositionAction'>, asset_name=<dataclasses._MISSING_TYPE object at 0x7ab698fdf050>, debug_vis=False, clip=None, joint_names=['finger_joint'], scale=1.0, offset=0.0, preserve_order=False, use_default_offset=True)}",
+          "required": false
+        },
+        "actuator_value_resolution_debug_print": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "actuators": {
+          "annotation": "dict[str, isaaclab.actuators.actuator_cfg.ActuatorBaseCfg]",
+          "default_repr": "{'panda_shoulder': ImplicitActuatorCfg(class_type=<class 'isaaclab.actuators.actuator_pd.ImplicitActuator'>, joint_names_expr=['panda_joint[1-4]'], effort_limit=None, velocity_limit=None, effort_limit_sim=87.0, velocity_limit_sim=2.175, stiffness=400.0, damping=80.0, armature=None, friction=None, dynamic_friction=None, viscous_friction=None), 'panda_forearm': ImplicitActuatorCfg(class_type=<class 'isaaclab.actuators.actuator_pd.ImplicitActuator'>, joint_names_expr=['panda_joint[5-7]'], effort_limit=None, velocity_limit=None, effort_limit_sim=12.0, velocity_limit_sim=2.61, stiffness=400.0, damping=80.0, armature=None, friction=None, dynamic_friction=None, viscous_friction=None), 'robotiq_gripper': ImplicitActuatorCfg(class_type=<class 'isaaclab.actuators.actuator_pd.ImplicitActuator'>, joint_names_expr=['finger_joint'], effort_limit=None, velocity_limit=None, effort_limit_sim=200.0, velocity_limit_sim=0.2, stiffness=2000.0, damping=100.0, armature=None, friction=None, dynamic_friction=None, viscous_friction=None)}",
+          "required": false
+        },
+        "articulation_root_prim_path": {
+          "annotation": "str | None",
+          "default": null,
+          "required": false
+        },
+        "class_type": {
+          "annotation": "<class 'type'>",
+          "default_repr": "<class 'isaaclab.assets.articulation.articulation.Articulation'>",
+          "required": false
+        },
+        "collision_group": {
+          "annotation": "typing.Literal[0, -1]",
+          "default": 0,
+          "required": false
+        },
+        "debug_vis": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "event_terms": {
+          "annotation": "dict[str, isaaclab.managers.manager_term_cfg.EventTermCfg]",
+          "default_repr": "{'init_franka_arm_pose': EventTermCfg(func=<function set_default_joint_pose at 0x7ab4e649e660>, params={'default_pose': [0.0444, -0.1894, -0.1107, -2.5148, 0.0044, 2.3775, 0.6952, 0.0]}, mode='startup', interval_range_s=None, is_global_time=False, min_step_count_between_reset=0), 'randomize_franka_joint_state': EventTermCfg(func=<function randomize_joint_by_gaussian_offset at 0x7ab4e649e700>, params={'mean': 0.0, 'std': 0.02}, mode='reset', interval_range_s=None, is_global_time=False, min_step_count_between_reset=0)}",
+          "required": false
+        },
+        "init_state": {
+          "annotation": "<class 'isaaclab.assets.articulation.articulation_cfg.ArticulationCfg.InitialStateCfg'>",
+          "default_repr": "ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0), lin_vel=(0.0, 0.0, 0.0), ang_vel=(0.0, 0.0, 0.0), joint_pos={'panda_joint1': 0.0, 'panda_joint2': -0.569, 'panda_joint3': 0.0, 'panda_joint4': -2.81, 'panda_joint5': 0.0, 'panda_joint6': 3.037, 'panda_joint7': 0.741, 'finger_joint': 0.0}, joint_vel={'.*': 0.0})",
+          "required": false
+        },
+        "mass": {
+          "annotation": "float | None",
+          "default": null,
+          "required": false
+        },
+        "pos": {
+          "annotation": "tuple[float, float, float]",
+          "default": null,
+          "required": false
+        },
+        "prim_path": {
+          "annotation": "<class 'str'>",
+          "default": "{ENV_REGEX_NS}/Articulations",
+          "required": false
+        },
+        "rot": {
+          "annotation": "tuple[float, float, float, float]",
+          "default": null,
+          "required": false
+        },
+        "semantic_tags": {
+          "annotation": "list[tuple]",
+          "default": [
+            [
+              "class",
+              "robot"
+            ]
+          ],
+          "required": false
+        },
+        "semantics": {
+          "annotation": "list[SemanticCfg] | SemanticPreset",
+          "default": [],
+          "required": false
+        },
+        "sensors": {
+          "annotation": "dict[str, isaaclab.sensors.frame_transformer.frame_transformer_cfg.FrameTransformerCfg]",
+          "default": {},
+          "required": false
+        },
+        "soft_joint_pos_limit_factor": {
+          "annotation": "<class 'float'>",
+          "default": 1.0,
+          "required": false
+        },
+        "spawn": {
+          "annotation": "isaaclab.sim.spawners.spawner_cfg.SpawnerCfg | None",
+          "default_repr": "UsdFileCfg(func=<function spawn_from_usd at 0x7ab500aef9c0>, visible=True, semantic_tags=None, copy_from_source=True, mass_props=None, deformable_props=None, rigid_props=RigidBodyPropertiesCfg(rigid_body_enabled=None, kinematic_enabled=None, disable_gravity=True, linear_damping=None, angular_damping=None, max_linear_velocity=None, max_angular_velocity=None, max_depenetration_velocity=5.0, max_contact_impulse=None, enable_gyroscopic_forces=None, retain_accelerations=None, solver_position_iteration_count=None, solver_velocity_iteration_count=None, sleep_threshold=None, stabilization_threshold=None), collision_props=None, activate_contact_sensors=False, scale=None, articulation_props=ArticulationRootPropertiesCfg(articulation_enabled=None, enabled_self_collisions=True, solver_position_iteration_count=8, solver_velocity_iteration_count=0, sleep_threshold=None, stabilization_threshold=None, fix_root_link=None), fixed_tendons_props=None, spatial_tendons_props=None, joint_drive_props=None, visual_material_path='material', visual_material=None, usd_path='/home/lila/Documents/git/Matterix/source/matterix_assets/data/robots/franka/franka-robotiq85/franka-robotiq85-inst.usd', variants=None)",
+          "required": false
+        }
+      },
+      "kind": "articulated"
+    }
+  },
+  "generated_at": "2026-09-20T03:53:56.508556+00:00",
+  "primitive_semantics": {
+    "ambient_air_heat_convection": {
+      "class": "matterix.managers.semantics.primitive_semantics.heat_transfer.heat_convection.AmbientAirHeatConvectionCfg",
+      "fields": {
+        "H": {
+          "annotation": "<class 'float'>",
+          "default": 25,
+          "required": false
+        },
+        "ambient_temperature": {
+          "annotation": "<class 'float'>",
+          "default": 298.15,
+          "required": false
+        },
+        "type": {
+          "annotation": "<class 'str'>",
+          "default": "AmbientAirHeatConvection",
+          "required": false
+        },
+        "verbose": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        }
+      }
+    },
+    "heat_conductivity": {
+      "class": "matterix.managers.semantics.primitive_semantics.heat_transfer.heat_conductivity.HeatConductivityCfg",
+      "fields": {
+        "K": {
+          "annotation": "<class 'float'>",
+          "required": true
+        },
+        "type": {
+          "annotation": "<class 'str'>",
+          "default": "HeatConductivity",
+          "required": false
+        },
+        "verbose": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        }
+      }
+    },
+    "heat_convection": {
+      "class": "matterix.managers.semantics.primitive_semantics.heat_transfer.heat_convection.HeatConvectionCfg",
+      "fields": {
+        "H": {
+          "annotation": "<class 'float'>",
+          "required": true
+        },
+        "type": {
+          "annotation": "<class 'str'>",
+          "default": "HeatConvection",
+          "required": false
+        },
+        "verbose": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        }
+      }
+    },
+    "heat_source": {
+      "class": "matterix.managers.semantics.primitive_semantics.heat_transfer.heat_source.HeatSourceCfg",
+      "fields": {
+        "K": {
+          "annotation": "<class 'float'>",
+          "default": 0.05,
+          "required": false
+        },
+        "type": {
+          "annotation": "<class 'str'>",
+          "default": "HeatSource",
+          "required": false
+        },
+        "verbose": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        }
+      }
+    },
+    "is_heater_on": {
+      "class": "matterix.managers.semantics.primitive_semantics.heat_transfer.is_heater_on.IsHeaterOnCfg",
+      "fields": {
+        "default_value": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "target_temperature": {
+          "annotation": "<class 'float'>",
+          "default": 298.15,
+          "required": false
+        },
+        "type": {
+          "annotation": "<class 'str'>",
+          "default": "IsHeaterOn",
+          "required": false
+        },
+        "verbose": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        }
+      }
+    },
+    "is_in_contact": {
+      "class": "matterix.managers.semantics.primitive_semantics.is_in_contact.IsInContactCfg",
+      "fields": {
+        "default_value": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "type": {
+          "annotation": "<class 'str'>",
+          "default": "IsInContact",
+          "required": false
+        },
+        "verbose": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        }
+      }
+    },
+    "is_in_contact_physics": {
+      "class": "matterix.managers.semantics.primitive_semantics.is_in_contact.IsInContactPhysicsCfg",
+      "fields": {
+        "default_value": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        },
+        "filter_prim_paths_expr": {
+          "annotation": "list[str]",
+          "default": [],
+          "required": false
+        },
+        "type": {
+          "annotation": "<class 'str'>",
+          "default": "IsInContactPhysics",
+          "required": false
+        },
+        "verbose": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        }
+      }
+    },
+    "temperature": {
+      "class": "matterix.managers.semantics.primitive_semantics.heat_transfer.temperature.TemperatureCfg",
+      "fields": {
+        "A": {
+          "annotation": "<class 'float'>",
+          "default": 0.1,
+          "required": false
+        },
+        "C": {
+          "annotation": "<class 'float'>",
+          "default": 468.0,
+          "required": false
+        },
+        "initial_state": {
+          "annotation": "<class 'float'>",
+          "default": 298.15,
+          "required": false
+        },
+        "type": {
+          "annotation": "<class 'str'>",
+          "default": "Temperature",
+          "required": false
+        },
+        "verbose": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        }
+      }
+    }
+  },
+  "semantic_presets": {
+    "heat_transfer": {
+      "class": "matterix.managers.semantics.semantic_presets.heat_transfer.HeatTransferCfg",
+      "fields": {
+        "A": {
+          "annotation": "float | None",
+          "default": null,
+          "required": false
+        },
+        "C": {
+          "annotation": "float | None",
+          "default": null,
+          "required": false
+        },
+        "H": {
+          "annotation": "float | None",
+          "default": null,
+          "required": false
+        },
+        "K": {
+          "annotation": "float | None",
+          "default": null,
+          "required": false
+        },
+        "temp": {
+          "annotation": "float | None",
+          "default": null,
+          "required": false
+        },
+        "verbose": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        }
+      }
+    },
+    "heater": {
+      "class": "matterix.managers.semantics.semantic_presets.heater.HeaterCfg",
+      "fields": {
+        "A": {
+          "annotation": "float | None",
+          "default": null,
+          "required": false
+        },
+        "C": {
+          "annotation": "float | None",
+          "default": null,
+          "required": false
+        },
+        "H": {
+          "annotation": "float | None",
+          "default": null,
+          "required": false
+        },
+        "K": {
+          "annotation": "float | None",
+          "default": null,
+          "required": false
+        },
+        "K_heater": {
+          "annotation": "float | None",
+          "default": null,
+          "required": false
+        },
+        "heater_on": {
+          "annotation": "bool | None",
+          "default": null,
+          "required": false
+        },
+        "target_temperature": {
+          "annotation": "float | None",
+          "default": null,
+          "required": false
+        },
+        "temp": {
+          "annotation": "float | None",
+          "default": null,
+          "required": false
+        },
+        "verbose": {
+          "annotation": "<class 'bool'>",
+          "default": false,
+          "required": false
+        }
+      }
+    }
+  }
+}

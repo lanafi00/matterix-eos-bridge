@@ -106,6 +106,30 @@ should print `PASS`; a `FAIL` or an uncaught traceback means something regressed
   to the twin (both describe the slot's role in the scene), but lets the twin's own class
   defaults win for physically-intrinsic fields (usd_path, mass, scale, frames).
 
+## Declarative scene schema (in progress)
+
+Working toward a thin YAML/JSON schema (asset catalog entry, pos/rot, semantics preset +
+params, workflow step sequence) that compiles to a scene's `*_env_cfg.py`, so authoring a
+scene doesn't mean hand-writing `@configclass` Python — see the review discussion for the
+full rationale (schema-validate before ever paying Isaac Sim's 1-2 min boot cost).
+
+First piece: `dump_catalog.py` (repo root, run the same way as `smoke_test.py`) boots
+Isaac Sim once and dumps every asset/action/semantics class Matterix currently ships —
+name, and constructor field signature (required vs. default) — to `catalog.json`. The
+schema/compiler (not built yet) validates a schema author's asset/action/semantics
+*names* and required fields against this file instead of booting Isaac Sim on every
+validation. Regenerate it whenever Matterix's own asset/action/semantics classes change
+(e.g. a Matterix version bump):
+
+```
+EOS_PATH=/home/lila/Documents/git/eos \
+    /home/lila/miniconda3/envs/eos-isaaclab/bin/python3 dump_catalog.py
+```
+
+`catalog.json` is checked in (not gitignored) since it's a build artifact meant to be
+diffed like any other — a Matterix upgrade that silently renames/removes a field is
+exactly the kind of change a `git diff catalog.json` should surface.
+
 ## Known open gaps
 
 - `get_backend()`'s conda-env relocation is a working stopgap, not the intended fix — the
