@@ -1,0 +1,34 @@
+# First round-trip target for schema/compiler.py -- deliberately the same scene as the
+# hand-authored scenes/exp1_beaker_pick/beaker_pick_env_cfg.py, so compiling this and
+# booting the result is a direct test of the compiler against a known-good baseline, not a
+# new untested scene. Compiles to scenes/beaker_pick_generated/ (a different gym_id and
+# directory than exp1 itself, so it doesn't overwrite or collide with it) -- see CLAUDE.md.
+
+name: beaker_pick_generated
+gym_id: Matterix-Experiment-Beaker-Pick-Generated-v1
+env_spacing: 10.0
+
+assets:
+  robot:
+    kind: articulated
+    catalog: robots/franka_panda_high_pd_ik
+    pos: [0.0, 0.0, 0.0]
+  beaker:
+    kind: object
+    catalog: labware/beaker_500ml_inst
+    pos: [0.6, 0.05, 0.05]
+    randomize_position:
+      x: [-0.1, 0.1]
+      y: [-0.15, 0.15]
+  table:
+    kind: object
+    catalog: infrastructure/table_seattle_inst
+    pos: [0.5, 0.0, 0.0]
+
+workflows:
+  pickup_beaker:
+    action: pick_object
+    params:
+      description: "Pick up the beaker"
+      agent_assets: robot
+      object: beaker

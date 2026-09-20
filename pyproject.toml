@@ -5,4 +5,10 @@ description = "EOS package matterix_bridge"
 readme = "README.md"
 dependencies = [
   "eos",
+  # schema/ (declarative scene schema + compiler) -- deliberately NOT isaaclab/matterix,
+  # see schema/__init__.py's docstring: it only needs to read catalog.json and validate/
+  # render plain data, so it runs in EOS's own plain venv, no Isaac Sim boot required.
+  "pydantic",
+  "jinja2",
+  "pyyaml",
 ]
