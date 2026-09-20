@@ -139,13 +139,35 @@ hand-authored scene, but a new one still needs a manual one-line addition to
 `scenes/__init__.py`'s own imports/`__all__` (same as adding any new `scenes/exp*/`) for
 `_discover_scene_modules()` to pick it up; the CLI doesn't edit that file for you.
 
-Scope is deliberately narrow right now (see `schema/models.py`'s docstring) — covers
-exactly what `scene_specs/beaker_pick.yaml` needs (asset placement, one position-
-randomization event kind, plain `pick_object`-shaped workflow steps), live-verified by
-compiling it to `scenes/beaker_pick_generated/` and actually running its workflow in Isaac
-Sim (`success: true`). NOT yet covered: semantics presets, global semantics, multi-agent
-scenes, composite/bundled workflows — extend `models.py`/`compiler.py` together when the
-next round-trip target (`exp3_heater_transfer`, the semantics-heavy scene) needs them.
+Scope covers what `exp1_beaker_pick` and `exp3_heater_transfer` need (see
+`schema/models.py`'s docstring): asset placement, position/temperature randomization,
+plain and composite (bundled, ref-based) workflow steps, per-asset and global semantics.
+Both round-tripped and live-verified — `scene_specs/beaker_pick.yaml` →
+`scenes/beaker_pick_generated/` (`pickup_beaker`: `success: true`) and
+`scene_specs/heater_transfer.yaml` → `scenes/heater_transfer_generated/` (`turn_on_heater`
+and the full 14-step `pickup_and_place` composite: both `success: true`, semantics engine
+visibly firing — heat transfer, contact detection, ambient convection). NOT yet covered:
+multi-agent scenes (`exp4_dual_arm_handoff`'s two-robot case) — extend
+`models.py`/`compiler.py`/`robot_metadata.py` together if that becomes the next target.
+
+One real Matterix inconsistency found and worked around while building this (see
+`compiler.py`'s `_render_semantics_value()` docstring for the full, live-verified
+explanation): `MatterixRigidObjectCfg`/`MatterixArticulationCfg`'s `__post_init__` both
+flatten a `semantics=[...]` list containing an embedded composite preset into real
+primitives, but `MatterixStaticObjectCfg`'s does not — only a *bare*, unwrapped preset
+(`semantics=SomePreset(...)`). The compiler renders bare whenever an asset has exactly one
+semantics entry and it's a preset (safe across all three base types), list otherwise. Not
+a bug in this repo — it's upstream Matterix's own asset base classes disagreeing with each
+other — and not fixed by extending `dump_catalog.py`/`catalog.json` to distinguish
+rigid-vs-static, since neither scene compiled so far actually needs 2+ semantics entries
+including a preset on a static-object-based asset; revisit if one does.
+
+Separately, worth noting: writing `scene_specs/heater_transfer.yaml` surfaced a pre-existing
+naming bug in the hand-authored `exp3_heater_transfer/heater_transfer_env_cfg.py`'s own
+`__post_init__` — its `randomize_table_temp` EventTerm actually targets `asset_name:
+"beaker"`, not the table. Not touched (out of scope of the schema work), but the compiled
+scene names the equivalent event `randomize_beaker_temperature` (after its real target)
+rather than reproducing the confusing name.
 
 ## Known open gaps
 

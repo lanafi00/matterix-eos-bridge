@@ -37,14 +37,6 @@ class EventCfg(EventManagerCfg):
 @configclass
 class ObservationManagerCfg:
     @configclass
-    class ArticulationsGroup(ObsGroup):
-        locals().update(robot_obs_terms("robot", FRANKA_IK_ACTION_SPACE))
-
-        def __post_init__(self):
-            self.enable_corruption = False
-            self.concatenate_terms = False
-
-    @configclass
     class RigidObjectsGroup(ObsGroup):
         beaker__object_world_pos = ObsTerm(func=mdp.object_world_pos, params={"asset_name": "beaker"})
         beaker__object_world_quat = ObsTerm(func=mdp.object_world_quat, params={"asset_name": "beaker"})
@@ -62,8 +54,16 @@ class ObservationManagerCfg:
             self.enable_corruption = False
             self.concatenate_terms = False
 
-    articulations: ArticulationsGroup = ArticulationsGroup()
+    @configclass
+    class ArticulationsGroup(ObsGroup):
+        locals().update(robot_obs_terms("robot", FRANKA_IK_ACTION_SPACE))
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = False
+
     rigid_objects: RigidObjectsGroup = RigidObjectsGroup()
+    articulations: ArticulationsGroup = ArticulationsGroup()
 
 
 @configclass

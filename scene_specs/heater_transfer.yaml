@@ -1,0 +1,100 @@
+# Second round-trip target for schema/compiler.py -- the semantics-heavy stress test,
+# deliberately the same scene as scenes/exp3_heater_transfer/heater_transfer_env_cfg.py,
+# to exercise per-asset semantics, global semantics, temperature randomization, and
+# composite (bundled) workflow steps built from refs -- see CLAUDE.md.
+#
+# One intentional difference from the hand-authored file: exp3's own `__post_init__`
+# names an EventTerm "randomize_table_temp" but its `asset_name` param actually targets
+# "beaker", not "table" -- a pre-existing naming bug in that file (found while writing
+# this), not something to reproduce here. This schema names randomization events after
+# their real target asset, so it compiles to "randomize_beaker_temperature" instead.
+
+name: heater_transfer_generated
+gym_id: Matterix-Experiment-Heater-Transfer-Generated-v1
+env_spacing: 5.0
+episode_length_s: 100.0
+
+assets:
+  robot:
+    kind: articulated
+    catalog: robots/franka_panda_high_pd_ik
+    pos: [0.0, 0.0, 0.0]
+    mass: 20.0
+    semantics:
+      - preset: heat_transfer
+        params: {temp: 350.15, C: 7920.0, A: 0.5, verbose: true}
+
+  beaker:
+    kind: object
+    catalog: labware/beaker_500ml_inst
+    pos: [0.6, 0.05, 0.05]
+    semantics:
+      - preset: is_in_contact_physics
+        params: {filter_prim_paths_expr: [ika_plate], verbose: true}
+      - preset: heat_transfer
+        params: {temp: 298.15, C: 7920.0, A: 0.1, K: 200, verbose: true}
+    randomize_position:
+      x: [-0.1, 0.1]
+      y: [-0.1, 0.1]
+    randomize_temperature:
+      min_temp: 293.15
+      max_temp: 323.15
+
+  ika_plate:
+    kind: object
+    catalog: equipment/ika_plate_inst
+    pos: [0.4, -0.3, 0.12]
+    rot: [0, 0, 0, 1]
+    semantics:
+      - preset: heater
+        params: {temp: 350.15, C: 7920.0, A: 0.5, heater_on: false, target_temperature: 298.15, K_heater: 0.1, verbose: true}
+
+  table:
+    kind: object
+    catalog: infrastructure/table_seattle_inst
+    pos: [0.5, 0.0, 0.0]
+    mass: 50.0
+    semantics:
+      - preset: heat_transfer
+        params: {temp: 323.15, C: 7920.0, A: 1.1, verbose: true}
+
+global_semantics:
+  - preset: ambient_air_heat_convection
+    params: {verbose: true}
+
+workflows:
+  turn_on_heater:
+    action: turn_on_heater
+    params: {asset_name: ika_plate, value: true, target_temperature: 373.15}
+  pick_beaker:
+    action: pick_object
+    params: {description: "Pick up the beaker", agent_assets: robot, object: beaker}
+  place_beaker:
+    action: place_object
+    params: {description: "Place the beaker on top of the IKA plate", agent_assets: robot, target: ika_plate}
+  wait_for_heat_transfer:
+    action: wait
+    params: {duration: 10.0}
+  turn_off_heater:
+    action: turn_on_heater
+    params: {asset_name: ika_plate, value: false}
+
+bundles:
+  observe_heating:
+    - action: pick_object
+      params:
+        description: "Pick up the (pre-heated) beaker and hold it - watch its temperature rise"
+        agent_assets: robot
+        object: beaker
+    - action: wait
+      params: {duration: 5.0}
+  pickup_and_place:
+    - action: wait
+      params: {duration: 2.0}
+    - ref: turn_on_heater
+    - ref: pick_beaker
+    - ref: place_beaker
+    - ref: wait_for_heat_transfer
+    - ref: turn_off_heater
+    - action: wait
+      params: {duration: 5.0}

@@ -28,6 +28,7 @@ from . import (
     exp2_pick_and_place,
     exp3_heater_transfer,
     exp4_dual_arm_handoff,
+    heater_transfer_generated,
 )
 
 __all__ = [
@@ -35,5 +36,7 @@ __all__ = [
     "exp2_pick_and_place",
     "exp3_heater_transfer",
     "exp4_dual_arm_handoff",
-    "beaker_pick_generated",  # schema/-compiled -- see scene_specs/beaker_pick.yaml
+    # schema/-compiled (see scene_specs/) -- CLAUDE.md
+    "beaker_pick_generated",
+    "heater_transfer_generated",
 ]
