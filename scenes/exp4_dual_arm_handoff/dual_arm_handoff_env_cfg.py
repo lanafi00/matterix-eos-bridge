@@ -28,6 +28,31 @@ from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
+# Kwargs for the atomic steps also used, unchanged, inside "handoff" below (a bundled convenience
+# workflow for manual/dev CLI use, never reached through protocol_registry.py -- see its own
+# comment). Module-level, not class attributes -- see heater_transfer_env_cfg.py's identical
+# pattern for why: `@configclass` turns every non-dunder class attribute into a config field, and
+# workflow_overrides mutates a workflow's Cfg instance in place, only ever targeting an atomic
+# entry by name, so two entries sharing one instance would let an override leak between them.
+_ROBOT_PICK_BEAKER_KWARGS = dict(
+    description="robot picks up the beaker from the table",
+    agent_assets="robot",
+    object="beaker",
+    action_space_info=FRANKA_IK_ACTION_SPACE,
+)
+_ROBOT_PLACE_ON_STATION_KWARGS = dict(
+    description="robot places the beaker on the shared station",
+    agent_assets="robot",
+    target="station",
+    action_space_info=FRANKA_IK_ACTION_SPACE,
+)
+_ROBOT2_PICK_BEAKER_KWARGS = dict(
+    description="robot2 picks up the beaker from the station",
+    agent_assets="robot2",
+    object="beaker",
+    action_space_info=FRANKA_IK_ACTION_SPACE,
+)
+
 
 @configclass
 class EventCfg(EventManagerCfg):
@@ -108,51 +133,19 @@ class DualArmHandoffEnvCfg(MatterixBaseEnvCfg):
     observations = ObservationManagerCfg()
     events = EventCfg()
 
-    record_path = "datasets/dataset.hdf5"
-
     workflows = {
         # Atomic, one entry per EOS DAG task node - what an EOS-facing caller dispatches
         # one at a time (see matterix_bridge/common/protocol_registry.py).
-        "robot_pick_beaker": PickObjectCfg(
-            description="robot picks up the beaker from the table",
-            agent_assets="robot",
-            object="beaker",
-            action_space_info=FRANKA_IK_ACTION_SPACE,
-        ),
-        "robot_place_on_station": PlaceObjectCfg(
-            description="robot places the beaker on the shared station",
-            agent_assets="robot",
-            target="station",
-            action_space_info=FRANKA_IK_ACTION_SPACE,
-        ),
+        "robot_pick_beaker": PickObjectCfg(**_ROBOT_PICK_BEAKER_KWARGS),
+        "robot_place_on_station": PlaceObjectCfg(**_ROBOT_PLACE_ON_STATION_KWARGS),
         "wait_for_handoff": WaitCfg(duration=1.0),
-        "robot2_pick_beaker": PickObjectCfg(
-            description="robot2 picks up the beaker from the station",
-            agent_assets="robot2",
-            object="beaker",
-            action_space_info=FRANKA_IK_ACTION_SPACE,
-        ),
+        "robot2_pick_beaker": PickObjectCfg(**_ROBOT2_PICK_BEAKER_KWARGS),
         # Bundled convenience workflow for manual/dev CLI use - runs all four atomic
         # steps back to back in one call.
         "handoff": [
-            PickObjectCfg(
-                description="robot picks up the beaker from the table",
-                agent_assets="robot",
-                object="beaker",
-                action_space_info=FRANKA_IK_ACTION_SPACE,
-            ),
-            PlaceObjectCfg(
-                description="robot places the beaker on the shared station",
-                agent_assets="robot",
-                target="station",
-                action_space_info=FRANKA_IK_ACTION_SPACE,
-            ),
+            PickObjectCfg(**_ROBOT_PICK_BEAKER_KWARGS),
+            PlaceObjectCfg(**_ROBOT_PLACE_ON_STATION_KWARGS),
             WaitCfg(duration=1.0),
-            PickObjectCfg(
-                description="robot2 picks up the beaker from the station",
-                agent_assets="robot2",
-                object="beaker",
-                action_space_info=FRANKA_IK_ACTION_SPACE,
-            ),
+            PickObjectCfg(**_ROBOT2_PICK_BEAKER_KWARGS),
         ],
     }

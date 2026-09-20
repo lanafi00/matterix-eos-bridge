@@ -99,8 +99,6 @@ class BeakerPickEnvCfg(MatterixBaseEnvCfg):
     observations = ObservationManagerCfg()
     events = EventCfg()
 
-    record_path = "datasets/dataset.hdf5"
-
     workflows = {
         "pickup_beaker": PickObjectCfg(
             description="Pick up the beaker",
