@@ -113,22 +113,39 @@ params, workflow step sequence) that compiles to a scene's `*_env_cfg.py`, so au
 scene doesn't mean hand-writing `@configclass` Python — see the review discussion for the
 full rationale (schema-validate before ever paying Isaac Sim's 1-2 min boot cost).
 
-First piece: `dump_catalog.py` (repo root, run the same way as `smoke_test.py`) boots
-Isaac Sim once and dumps every asset/action/semantics class Matterix currently ships —
-name, and constructor field signature (required vs. default) — to `catalog.json`. The
-schema/compiler (not built yet) validates a schema author's asset/action/semantics
-*names* and required fields against this file instead of booting Isaac Sim on every
-validation. Regenerate it whenever Matterix's own asset/action/semantics classes change
-(e.g. a Matterix version bump):
+**`dump_catalog.py`** (repo root, run the same way as `smoke_test.py`) boots Isaac Sim
+once and dumps every asset/action/semantics class Matterix currently ships — name, and
+constructor field signature (required vs. default) — to `catalog.json`, checked in (not
+gitignored) since it's a build artifact meant to be diffed like any other. Regenerate it
+whenever Matterix's own asset/action/semantics classes change (e.g. a Matterix version
+bump):
 
 ```
 EOS_PATH=/home/lila/Documents/git/eos \
     /home/lila/miniconda3/envs/eos-isaaclab/bin/python3 dump_catalog.py
 ```
 
-`catalog.json` is checked in (not gitignored) since it's a build artifact meant to be
-diffed like any other — a Matterix upgrade that silently renames/removes a field is
-exactly the kind of change a `git diff catalog.json` should surface.
+**`schema/`** is the schema + compiler itself — see `schema/__init__.py`'s docstring for
+the package layout. Deliberately has no isaaclab/matterix/matterix_sm dependency at all;
+it only reads `catalog.json`, so it validates and compiles in EOS's plain venv, no conda
+env or Isaac Sim boot needed:
+
+```
+/home/lila/Documents/git/eos/.venv/bin/python3 -m schema.compile_scene scene_specs/beaker_pick.yaml
+```
+
+writes `scenes/<name>/<name>_env_cfg.py` + `__init__.py` — same shape and convention as a
+hand-authored scene, but a new one still needs a manual one-line addition to
+`scenes/__init__.py`'s own imports/`__all__` (same as adding any new `scenes/exp*/`) for
+`_discover_scene_modules()` to pick it up; the CLI doesn't edit that file for you.
+
+Scope is deliberately narrow right now (see `schema/models.py`'s docstring) — covers
+exactly what `scene_specs/beaker_pick.yaml` needs (asset placement, one position-
+randomization event kind, plain `pick_object`-shaped workflow steps), live-verified by
+compiling it to `scenes/beaker_pick_generated/` and actually running its workflow in Isaac
+Sim (`success: true`). NOT yet covered: semantics presets, global semantics, multi-agent
+scenes, composite/bundled workflows — extend `models.py`/`compiler.py` together when the
+next round-trip target (`exp3_heater_transfer`, the semantics-heavy scene) needs them.
 
 ## Known open gaps
 

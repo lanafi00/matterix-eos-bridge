@@ -23,6 +23,7 @@ by this file importing one.
 """
 
 from . import (
+    beaker_pick_generated,
     exp1_beaker_pick,
     exp2_pick_and_place,
     exp3_heater_transfer,
@@ -34,4 +35,5 @@ __all__ = [
     "exp2_pick_and_place",
     "exp3_heater_transfer",
     "exp4_dual_arm_handoff",
+    "beaker_pick_generated",  # schema/-compiled -- see scene_specs/beaker_pick.yaml
 ]
