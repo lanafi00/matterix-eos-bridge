@@ -13,10 +13,12 @@ each already-correct multi-line block as a plain string in Python, then substitu
 blocks into the template, means the "is this valid Python" question only has one place to
 get wrong, and it's a place with normal Python tooling (not template whitespace rules).
 
-Covers what exp1_beaker_pick and exp3_heater_transfer need (see models.py's docstring for
-the same scope note): pick_object/place_object-shaped workflow steps, per-asset and global
-semantics, position/temperature randomization, and bundled (composite) workflows built
-from refs to atomic entries. NOT yet covered: multi-agent scenes (exp4's two-robot case).
+Covers what exp1_beaker_pick, exp3_heater_transfer, and exp4_dual_arm_handoff need (see
+models.py's docstring for the same scope note): pick_object/place_object-shaped workflow
+steps, per-asset and global semantics, position/temperature randomization, bundled
+(composite) workflows built from refs to atomic entries, and multi-agent scenes (more than
+one articulated asset, each step's action_space_info resolved from ITS OWN agent_assets,
+not one scene-wide "primary" robot -- see `_robot_meta_by_slot()`/`_resolve_step_kwargs()`).
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ import jinja2
 
 from .catalog import Catalog, load_catalog
 from .models import AssetSpec, BundleStep, SceneSpec, SemanticsSpec, WorkflowStep
-from .robot_metadata import get_robot_metadata
+from .robot_metadata import RobotMetadata, get_robot_metadata
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
@@ -174,11 +176,12 @@ def _render_event_cfg_body(spec: SceneSpec) -> str:
     return "\n".join(lines)
 
 
-def _render_articulations_group(articulated_slots: list[str], action_space_const: str) -> str:
+def _render_articulations_group(articulated_slots: list[str], robot_meta_by_slot: dict[str, RobotMetadata]) -> str:
     if not articulated_slots:
         return f"{_INDENT2}pass"
     return "\n".join(
-        f'{_INDENT2}locals().update(robot_obs_terms("{slot}", {action_space_const}))' for slot in articulated_slots
+        f'{_INDENT2}locals().update(robot_obs_terms("{slot}", {robot_meta_by_slot[slot].action_space_const}))'
+        for slot in articulated_slots
     )
 
 
@@ -238,34 +241,53 @@ def _policy_terms_for_asset(asset: AssetSpec) -> list[tuple[str, str]]:
     return terms
 
 
-def _render_policy_group(spec: SceneSpec, primary_robot_slot: str) -> str:
+def _render_policy_group(spec: SceneSpec, articulated_slots: list[str]) -> str:
     """Empty string if no asset has any semantics at all -- matching exp1_beaker_pick's
-    total absence of a PolicyCfg group (see compile_scene()'s conditional use of this)."""
-    lines = []
+    total absence of a PolicyCfg group (see compile_scene()'s conditional use of this).
+
+    One `ee_pos_{slot}` term per articulated asset (not just a single "ee_pos_robot"),
+    named after its own slot -- for a single-robot scene this produces exactly
+    "ee_pos_robot", matching exp3_heater_transfer's own PolicyCfg naming. NOT yet
+    live-verified for a multi-robot scene that ALSO has semantics (exp4_dual_arm_handoff
+    has no semantics at all, so this specific generalization isn't exercised by either
+    scene this schema currently round-trips) -- the single-robot case it's proven against
+    is unaffected either way.
+    """
+    lines = [
+        f'{_INDENT2}ee_pos_{slot} = ObsTerm(func=mdp.ee_env_pos, params={{"asset_name": "{slot}"}})'
+        for slot in articulated_slots
+    ]
+    n_ee_lines = len(lines)
     for slot, asset in spec.assets.items():
         for suffix, mdp_func in _policy_terms_for_asset(asset):
             lines.append(f'{_INDENT2}{slot}_{suffix} = ObsTerm(func=mdp.{mdp_func}, params={{"asset_name": "{slot}"}})')
-    if not lines:
-        return ""
-    lines.insert(
-        0, f'{_INDENT2}ee_pos_robot = ObsTerm(func=mdp.ee_env_pos, params={{"asset_name": "{primary_robot_slot}"}})'
-    )
+    if len(lines) == n_ee_lines:
+        return ""  # no asset has any semantics -- omit PolicyCfg entirely, ee_pos-only isn't useful alone
     return "\n".join(lines)
 
 
 def _resolve_step_kwargs(
-    action: str, params: dict, catalog: Catalog, primary_robot_meta, action_imports: dict[str, str]
+    action: str, params: dict, catalog: Catalog, robot_meta_by_slot: dict[str, RobotMetadata], action_imports: dict[str, str]
 ) -> tuple[str, str]:
     """(class_name, rendered_kwargs_string) for one action+params pair. Injects
     action_space_info the same way for every step (atomic, bundle-inline, or the shared
-    dict a bundle `ref` reuses) -- one place for this rule, not copy-pasted per caller."""
+    dict a bundle `ref` reuses) -- one place for this rule, not copy-pasted per caller.
+
+    Resolved from THIS STEP's own `agent_assets` (the first named slot, if it's a list),
+    not one scene-wide "primary" robot -- a multi-agent scene (e.g. exp4_dual_arm_handoff's
+    "robot"/"robot2") needs each step to drive whichever robot IT names, which can differ
+    step to step. models.py's `_validate_step` already guarantees `agent_assets` (when
+    present) names a declared, articulated asset slot, so the lookup here can't miss.
+    """
     entry = catalog.actions[action]
     class_name = entry["class"].rsplit(".", 1)[-1]
     action_imports[class_name] = f"from matterix_sm import {class_name}"
 
     kwargs = dict(params)
     if "action_space_info" in entry["fields"] and "agent_assets" in kwargs:
-        kwargs["action_space_info"] = primary_robot_meta.action_space_const
+        agent_assets = kwargs["agent_assets"]
+        first_agent = agent_assets[0] if isinstance(agent_assets, list) else agent_assets
+        kwargs["action_space_info"] = robot_meta_by_slot[first_agent].action_space_const
     rendered = ", ".join(_render_kwarg(k, v) for k, v in kwargs.items())
     return class_name, rendered
 
@@ -295,13 +317,27 @@ def compile_scene(spec: SceneSpec) -> tuple[str, str]:
     articulated_slots = [s for s, a in spec.assets.items() if a.kind == "articulated"]
     object_slots = [s for s, a in spec.assets.items() if a.kind == "object"]
 
-    # One robot's metadata drives gripper_joint_names/action_space_info for the whole
-    # scene -- MatterixBaseEnvCfg.gripper_joint_names is itself a single scene-level list,
-    # not per-robot, so this isn't a limitation this compiler introduces. See
-    # robot_metadata.py's docstring for why this table exists and its narrow scope.
     if not articulated_slots:
         raise CompileError("SceneSpec has no articulated (robot) asset -- nothing to drive a workflow.")
-    primary_robot_meta = get_robot_metadata(spec.assets[articulated_slots[0]].catalog)
+
+    # Each robot's OWN metadata drives its own action_space_info (see
+    # _resolve_step_kwargs()) and ArticulationsGroup entry (see
+    # _render_articulations_group()) -- a multi-agent scene's robots can be different
+    # models. gripper_joint_names is the one exception: MatterixBaseEnvCfg.
+    # gripper_joint_names is a single SCENE-level list, not per-robot (an upstream Matterix
+    # limitation, not something this compiler can route around -- see robot_metadata.py's
+    # docstring), so every robot in the scene must resolve to the SAME value; fail loudly
+    # with a clear message rather than silently picking one if they don't.
+    robot_meta_by_slot = {slot: get_robot_metadata(spec.assets[slot].catalog) for slot in articulated_slots}
+    gripper_joint_names_options = {tuple(m.gripper_joint_names) for m in robot_meta_by_slot.values()}
+    if len(gripper_joint_names_options) > 1:
+        raise CompileError(
+            "Scene has articulated assets with different gripper_joint_names "
+            f"({ {slot: robot_meta_by_slot[slot].gripper_joint_names for slot in articulated_slots} }) -- "
+            "MatterixBaseEnvCfg.gripper_joint_names is a single scene-level list, so one scene "
+            "can't mix robots with different grippers. Split into more than one scene."
+        )
+    gripper_joint_names = list(next(iter(gripper_joint_names_options)))
 
     all_steps = _collect_steps(spec)
     # dict.fromkeys(), not a set: preserves first-seen order (cosmetic, for stable/
@@ -341,7 +377,7 @@ def compile_scene(spec: SceneSpec) -> tuple[str, str]:
     workflow_lines: list[str] = []
     for wf_name, step in spec.workflows.items():
         cls_name, rendered_kwargs = _resolve_step_kwargs(
-            step.action, step.params, catalog, primary_robot_meta, action_imports
+            step.action, step.params, catalog, robot_meta_by_slot, action_imports
         )
         if wf_name in refd_names:
             const_name = _kwargs_const_name(wf_name)
@@ -356,12 +392,12 @@ def compile_scene(spec: SceneSpec) -> tuple[str, str]:
             if bstep.ref is not None:
                 atomic = spec.workflows[bstep.ref]
                 cls_name, _ = _resolve_step_kwargs(
-                    atomic.action, atomic.params, catalog, primary_robot_meta, action_imports
+                    atomic.action, atomic.params, catalog, robot_meta_by_slot, action_imports
                 )
                 item_lines.append(f"{_INDENT3}{cls_name}(**{_kwargs_const_name(bstep.ref)}),")
             else:
                 cls_name, rendered_kwargs = _resolve_step_kwargs(
-                    bstep.action, bstep.params, catalog, primary_robot_meta, action_imports
+                    bstep.action, bstep.params, catalog, robot_meta_by_slot, action_imports
                 )
                 item_lines.append(f"{_INDENT3}{cls_name}({rendered_kwargs}),")
         workflow_lines.append(f'{_INDENT2}"{bundle_name}": [\n' + "\n".join(item_lines) + f"\n{_INDENT2}],")
@@ -378,7 +414,7 @@ def compile_scene(spec: SceneSpec) -> tuple[str, str]:
         rendered = _render_semantics_value(spec.global_semantics, catalog, semantics_imports)
         global_semantics_line = f"{_INDENT1}semantics = {rendered}"
 
-    policy_group_body = _render_policy_group(spec, articulated_slots[0])
+    policy_group_body = _render_policy_group(spec, articulated_slots)
     rigid_objects_group_body = _render_rigid_objects_group(pick_targets, place_targets)
 
     import_lines = [
@@ -390,7 +426,11 @@ def compile_scene(spec: SceneSpec) -> tuple[str, str]:
     if articulated_slots:
         import_lines.append("from user.matterix_bridge.scenes.common import robot_obs_terms")
     import_lines += sorted(action_imports.values())
-    import_lines.append(f"from matterix_sm.robot_action_spaces import {primary_robot_meta.action_space_const}")
+    # Every distinct action-space constant any robot in the scene needs -- each robot's
+    # own ArticulationsGroup entry (_render_articulations_group()) always needs its own
+    # constant regardless of whether any workflow step happens to reference that robot.
+    action_space_consts = sorted({m.action_space_const for m in robot_meta_by_slot.values()})
+    import_lines.append(f"from matterix_sm.robot_action_spaces import {', '.join(action_space_consts)}")
     import_lines += [
         "",
         "import isaaclab.envs.mdp as isaaclab_mdp",
@@ -417,14 +457,14 @@ def compile_scene(spec: SceneSpec) -> tuple[str, str]:
         event_cfg_body=_render_event_cfg_body(spec),
         has_policy_group=bool(policy_group_body),
         policy_group_body=policy_group_body,
-        articulations_group_body=_render_articulations_group(articulated_slots, primary_robot_meta.action_space_const),
+        articulations_group_body=_render_articulations_group(articulated_slots, robot_meta_by_slot),
         rigid_objects_group_body=rigid_objects_group_body,
         class_name=class_name,
         env_spacing=repr(spec.env_spacing),
         episode_length_line=(
             f"{_INDENT1}episode_length_s = {spec.episode_length_s!r}" if spec.episode_length_s is not None else ""
         ),
-        gripper_joint_names=repr(primary_robot_meta.gripper_joint_names),
+        gripper_joint_names=repr(gripper_joint_names),
         objects_body=objects_body,
         articulated_assets_body=articulated_assets_body,
         global_semantics_line=global_semantics_line,

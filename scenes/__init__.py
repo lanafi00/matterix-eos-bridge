@@ -24,6 +24,7 @@ by this file importing one.
 
 from . import (
     beaker_pick_generated,
+    dual_arm_handoff,
     exp1_beaker_pick,
     exp2_pick_and_place,
     exp3_heater_transfer,
@@ -39,4 +40,5 @@ __all__ = [
     # schema/-compiled (see scene_specs/) -- CLAUDE.md
     "beaker_pick_generated",
     "heater_transfer_generated",
+    "dual_arm_handoff",
 ]

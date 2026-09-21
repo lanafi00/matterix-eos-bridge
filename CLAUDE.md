@@ -139,16 +139,36 @@ hand-authored scene, but a new one still needs a manual one-line addition to
 `scenes/__init__.py`'s own imports/`__all__` (same as adding any new `scenes/exp*/`) for
 `_discover_scene_modules()` to pick it up; the CLI doesn't edit that file for you.
 
-Scope covers what `exp1_beaker_pick` and `exp3_heater_transfer` need (see
-`schema/models.py`'s docstring): asset placement, position/temperature randomization,
-plain and composite (bundled, ref-based) workflow steps, per-asset and global semantics.
-Both round-tripped and live-verified — `scene_specs/beaker_pick.yaml` →
-`scenes/beaker_pick_generated/` (`pickup_beaker`: `success: true`) and
-`scene_specs/heater_transfer.yaml` → `scenes/heater_transfer_generated/` (`turn_on_heater`
-and the full 14-step `pickup_and_place` composite: both `success: true`, semantics engine
-visibly firing — heat transfer, contact detection, ambient convection). NOT yet covered:
-multi-agent scenes (`exp4_dual_arm_handoff`'s two-robot case) — extend
-`models.py`/`compiler.py`/`robot_metadata.py` together if that becomes the next target.
+Scope covers what `exp1_beaker_pick`, `exp3_heater_transfer`, AND `exp4_dual_arm_handoff`
+all need (see `schema/models.py`'s docstring): asset placement, position/temperature
+randomization, plain and composite (bundled, ref-based) workflow steps, per-asset and
+global semantics, and multi-agent scenes (more than one articulated asset). All three
+round-tripped and live-verified:
+- `scene_specs/beaker_pick.yaml` → `scenes/beaker_pick_generated/` (`pickup_beaker`:
+  `success: true`).
+- `scene_specs/heater_transfer.yaml` → `scenes/heater_transfer_generated/`
+  (`turn_on_heater` and the full 14-step `pickup_and_place` composite: both
+  `success: true`, semantics engine visibly firing — heat transfer, contact detection,
+  ambient convection).
+- `scene_specs/dual_arm_handoff.yaml` → `scenes/dual_arm_handoff/` (two robots, each
+  workflow step's `action_space_info` resolved from THAT step's own `agent_assets`, not
+  one scene-wide "primary" robot — see `compiler.py`'s `_resolve_step_kwargs()`). Boots and
+  constructs correctly, but running its `handoff` workflow hits the exact same pre-existing
+  `ValueError: Invalid action shape, expected: 16, received: 8` as the hand-authored
+  `exp4_dual_arm_handoff` (see "Known open gaps" below) — reproduced identically,
+  confirming this is `matterix_sm`'s own multi-agent action-tensor-sizing limitation, not
+  something the compiler introduced. As complete a verification as this scene shape can
+  currently get.
+
+Multi-agent support needed one schema tightening alongside the compiler change:
+`agent_assets` is now validated to actually name an *articulated* asset (previously any
+declared slot passed) — `compiler.py` looks up per-robot metadata by that exact name to
+resolve each step's `action_space_info`, so a non-robot `agent_assets` would otherwise
+surface as a bare `KeyError` deep in the compiler instead of a clear schema error.
+`gripper_joint_names` (a single MatterixBaseEnvCfg-level list, not per-robot — an upstream
+Matterix limitation, not a schema gap) is checked for agreement across every robot in the
+scene at compile time, raising `CompileError` rather than silently picking one if they
+ever differ.
 
 One real Matterix inconsistency found and worked around while building this (see
 `compiler.py`'s `_render_semantics_value()` docstring for the full, live-verified
@@ -180,6 +200,18 @@ rather than reproducing the confusing name.
 - Matterix's `PickObjectCfg`/`PlaceObjectCfg` report success based on the robot reaching a
   target end-effector pose, not on whether the object was actually grasped or placed — a
   workflow can report `success=True` with nothing physically achieved. Not yet addressed.
+- A two-robot scene (`exp4_dual_arm_handoff`, and the schema-compiled
+  `scenes/dual_arm_handoff/`) fails any workflow step at the very first action with
+  `ValueError: Invalid action shape, expected: 16, received: 8` — VERIFIED against both
+  the hand-authored file and its unmodified pre-refactor version (identical failure), so
+  it's a real, pre-existing limitation, not something introduced by any change in this
+  repo. `env.action_manager` sizes the action tensor for every articulated asset in the
+  scene combined (2 robots × 8 dims = 16), but `matterix_sm`'s `StateMachine.step()` only
+  returns an action sized for the ONE robot the current step's `agent_assets` actually
+  drives (8 dims) — `runtime.py`'s own None-action fallback (`env.action_manager.action`)
+  only covers a pure semantic workflow with no agent at all, not this partial-agent case.
+  Looks like a `matterix_sm` gap, not something fixable from this bridge; not yet
+  addressed.
 
 ## Conventions
 

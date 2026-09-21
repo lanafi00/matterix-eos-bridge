@@ -1,0 +1,60 @@
+# Third round-trip target for schema/compiler.py -- the multi-agent stress test,
+# deliberately the same scene as scenes/exp4_dual_arm_handoff/dual_arm_handoff_env_cfg.py,
+# to exercise two articulated assets sharing one scene, each workflow step's
+# action_space_info resolved from ITS OWN agent_assets (not one scene-wide "primary"
+# robot), and a bundle whose every step is a ref (no inline steps at all) -- see CLAUDE.md.
+
+name: dual_arm_handoff
+gym_id: Matterix-Experiment-Dual-Arm-Handoff-Generated-v1
+env_spacing: 10.0
+episode_length_s: 60.0
+
+assets:
+  robot:
+    kind: articulated
+    catalog: robots/franka_panda_high_pd_ik
+    pos: [0.0, 0.0, 0.0]
+  robot2:
+    kind: articulated
+    catalog: robots/franka_panda_high_pd_ik
+    pos: [0.0, 0.8, 0.0]
+
+  beaker:
+    kind: object
+    catalog: labware/beaker_500ml_inst
+    pos: [0.6, 0.05, 0.05]
+    randomize_position:
+      x: [-0.05, 0.05]
+      y: [-0.05, 0.05]
+  table:
+    kind: object
+    catalog: infrastructure/table_seattle_inst
+    pos: [0.5, 0.0, 0.0]
+  # Reused purely as a static hand-off surface (frames only, heater unused) -- matches
+  # exp4_dual_arm_handoff's own comment on this exact same reuse.
+  station:
+    kind: object
+    catalog: equipment/ika_plate_inst
+    pos: [0.5, 0.4, 0.12]
+    rot: [0, 0, 0, 1]
+
+workflows:
+  robot_pick_beaker:
+    action: pick_object
+    params: {description: "robot picks up the beaker from the table", agent_assets: robot, object: beaker}
+  robot_place_on_station:
+    action: place_object
+    params: {description: "robot places the beaker on the shared station", agent_assets: robot, target: station}
+  wait_for_handoff:
+    action: wait
+    params: {duration: 1.0}
+  robot2_pick_beaker:
+    action: pick_object
+    params: {description: "robot2 picks up the beaker from the station", agent_assets: robot2, object: beaker}
+
+bundles:
+  handoff:
+    - ref: robot_pick_beaker
+    - ref: robot_place_on_station
+    - ref: wait_for_handoff
+    - ref: robot2_pick_beaker

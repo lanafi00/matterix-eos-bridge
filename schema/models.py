@@ -6,11 +6,13 @@ LLM's structured output should target (`SceneSpec.model_json_schema()` gives you
 Schema for that) -- see schema/__init__.py's docstring and CLAUDE.md for the full
 rationale.
 
-Scope (v2 -- see CLAUDE.md's rollout plan): covers what exp1_beaker_pick AND
-exp3_heater_transfer need -- asset placement, position/temperature randomization, plain
-and composite (bundled) workflow steps, per-asset and global semantics. Still NOT covered:
-multi-agent scenes (exp4's two-robot case) -- extend this file (and compiler.py alongside
-it) again if that becomes the next round-trip target.
+Scope (v3 -- see CLAUDE.md's rollout plan): covers what exp1_beaker_pick,
+exp3_heater_transfer, and exp4_dual_arm_handoff all need -- asset placement, position/
+temperature randomization, plain and composite (bundled) workflow steps, per-asset and
+global semantics, and multi-agent scenes (more than one articulated asset). `agent_assets`
+is validated to actually name an articulated asset (not just any declared slot) -- see
+`_validate_step` below -- since compiler.py resolves each step's action_space_info from
+THAT step's own agent_assets, not one scene-wide "primary" robot.
 
 Validation happens in two places, deliberately: pydantic's own field types catch
 structural mistakes (wrong type, missing required key) for free; the `_validate_catalog`
@@ -227,6 +229,16 @@ class SceneSpec(BaseModel):
                     errors.append(
                         f"{context}.params.{ref_field} names {ref!r}, which isn't a "
                         f"declared asset slot. Known: {sorted(self.assets)}"
+                    )
+                elif ref_field == "agent_assets" and self.assets[ref].kind != "articulated":
+                    # compiler.py's _resolve_step_kwargs() looks up robot_metadata by
+                    # this exact name to inject action_space_info -- a non-articulated
+                    # asset has no robot metadata at all, so this would otherwise surface
+                    # as a KeyError deep in the compiler instead of a clear schema error.
+                    errors.append(
+                        f"{context}.params.agent_assets names {ref!r}, which is "
+                        f"kind={self.assets[ref].kind!r}, not 'articulated' -- only a "
+                        "robot (articulated asset) can be an agent."
                     )
 
     @model_validator(mode="after")
