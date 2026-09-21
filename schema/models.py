@@ -31,6 +31,7 @@ sub_actions) that makes catalog "required" an unreliable signal for compositiona
 
 from __future__ import annotations
 
+import keyword
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -177,6 +178,60 @@ class SceneSpec(BaseModel):
     env cfg class's own `semantics = [...]` attribute, distinct from any asset's own
     per-object `semantics=` constructor kwarg (AssetSpec.semantics)."""
 
+    @model_validator(mode="after")
+    def _validate_identifiers(self) -> "SceneSpec":
+        """`name`, every asset slot key, and every workflow/bundle key get spliced
+        directly into Python identifiers by compiler.py -- not just the env cfg class
+        name (from `name`) and the `_X_KWARGS` module-level constants (from a workflow
+        key), but bare attribute names built from an ASSET slot too: an EventTerm named
+        `randomize_{slot}_position`/`_temperature` (_render_event_cfg_body),
+        `{slot}_{suffix}` PolicyCfg terms (_render_policy_group), and
+        `{slot}__object_world_pos`-style RigidObjectsGroup terms
+        (_render_rigid_objects_group) are all real Python attribute assignments, not
+        quoted strings. A name that isn't a valid identifier (a space, a hyphen -- easy to
+        write in YAML, invalid in all of these) would otherwise write a `*_env_cfg.py`
+        file with a SyntaxError straight to disk, uncaught by compile_scene.py (which
+        never tries to import what it writes) -- surfacing only when Isaac Sim imports it
+        later, after paying the exact 1-2 minute boot cost this schema exists to avoid.
+        VERIFIED live: `name: my-bad-scene` produced `class My-bad-sceneEnvCfg(...):`,
+        a SyntaxError not caught anywhere before this validator was added.
+        """
+        errors: list[str] = []
+
+        def check(value: str, context: str) -> None:
+            if not value.isidentifier() or keyword.iskeyword(value):
+                errors.append(
+                    f"{context}: {value!r} isn't a valid Python identifier -- the compiler "
+                    "splices this directly into a class or attribute name. Use only "
+                    "letters, digits, and underscores, and don't start with a digit."
+                )
+
+        check(self.name, "name")
+        for slot in self.assets:
+            check(slot, f"assets key {slot!r}")
+        for wf_name in self.workflows:
+            check(wf_name, f"workflows key {wf_name!r}")
+        for bundle_name in self.bundles:
+            check(bundle_name, f"bundles key {bundle_name!r}")
+
+        collisions = set(self.workflows) & set(self.bundles)
+        if collisions:
+            # Both compile into the SAME Python `workflows = {...}` dict literal
+            # (compiler.py's compile_scene()) -- a name used in both silently produces a
+            # duplicate dict key, and Python keeps only the LAST one with no error at all
+            # (not even a SyntaxError) -- the bundle (a list) would silently replace the
+            # atomic entry (a single Cfg), corrupting whichever EOS task expects the
+            # atomic one. VERIFIED live: reproduced exactly this duplicate-key output.
+            errors.append(
+                f"workflows and bundles share name(s) {sorted(collisions)} -- both compile "
+                "into the same workflows dict; a shared name would silently make the "
+                "bundle overwrite the atomic entry with no error. Rename one."
+            )
+
+        if errors:
+            raise ValueError("\n  - " + "\n  - ".join(errors))
+        return self
+
     @staticmethod
     def _validate_semantics_list(
         semantics: list[SemanticsSpec], catalog: Catalog, context: str, errors: list[str]
@@ -222,6 +277,17 @@ class SceneSpec(BaseModel):
         for ref_field in ("agent_assets", "object", "target"):
             value = params.get(ref_field)
             if value is None:
+                continue
+            if isinstance(value, list) and not value:
+                # compiler.py's _resolve_step_kwargs() does `agent_assets[0]` on this
+                # exact value once it's past validation -- an empty list previously slid
+                # through here untouched (the `for ref in refs` loop below just never
+                # runs on an empty list, so no error was ever recorded) and crashed the
+                # compiler with a raw, uncaught IndexError instead of a clean message
+                # naming the problem. VERIFIED live: catalog.json declares agent_assets
+                # as `str | list[str]`, so `[]` is a type-valid value pydantic itself
+                # never rejects -- only this explicit check catches it.
+                errors.append(f"{context}.params.{ref_field} is an empty list -- name at least one asset.")
                 continue
             refs = value if isinstance(value, list) else [value]
             for ref in refs:
