@@ -18,11 +18,18 @@ models.py's docstring for the same scope note): pick_object/place_object-shaped 
 steps, per-asset and global semantics, position/temperature randomization, bundled
 (composite) workflows built from refs to atomic entries, and multi-agent scenes (more than
 one articulated asset, each step's action_space_info resolved from ITS OWN agent_assets,
-not one scene-wide "primary" robot -- see `_robot_meta_by_slot()`/`_resolve_step_kwargs()`).
+not one scene-wide "primary" robot -- see `_resolve_step_kwargs()`).
+
+`compile_scene()` at the bottom is the one entry point; everything else is a small,
+focused step it calls in sequence, sharing state through `_CompileContext` (catalog,
+per-slot robot metadata, per-slot asset class names, and the accumulated set of extra
+import lines every renderer contributes to) rather than each function taking its own
+handful of loose parameters.
 """
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import jinja2
@@ -40,6 +47,33 @@ _INDENT3 = "            "  # three levels: dict body -> list value -> list item
 
 class CompileError(ValueError):
     pass
+
+
+@dataclasses.dataclass
+class _CompileContext:
+    """Shared state every rendering step below reads from or contributes to, instead of
+    each function taking its own handful of the same few loose parameters
+    (catalog/robot_meta_by_slot/imports showed up in almost every function's signature
+    before this existed).
+
+    Three separate import sets, not one merged set: `_render_import_lines()` emits them
+    as three separate sorted blocks (semantics, then assets, then actions -- with the
+    `robot_obs_terms` import between the asset and action blocks) to match this file's own
+    established output shape exactly. Each is a plain `set[str]` of full `from x import y`
+    lines -- dropped the dict-keyed-by-source-key shape a couple of these used before,
+    since nothing ever looked a specific entry back up by key, only ever dumped the whole
+    collection, sorted, at the end.
+    """
+
+    spec: SceneSpec
+    catalog: Catalog
+    articulated_slots: list[str]
+    object_slots: list[str]
+    robot_meta_by_slot: dict[str, RobotMetadata]
+    asset_class_names: dict[str, str]
+    semantics_imports: set[str] = dataclasses.field(default_factory=set)
+    asset_imports: set[str] = dataclasses.field(default_factory=set)
+    action_imports: set[str] = dataclasses.field(default_factory=set)
 
 
 def _snake_to_pascal(name: str) -> str:
@@ -83,10 +117,10 @@ def _semantics_class_and_import(catalog: Catalog, preset_key: str) -> tuple[str,
 
 
 def _render_semantics_value(
-    semantics: list[SemanticsSpec], catalog: Catalog, imports: dict[str, str], *, bare_if_single_preset: bool = False
+    semantics: list[SemanticsSpec], ctx: _CompileContext, *, bare_if_single_preset: bool = False
 ) -> str:
     """`[Class1(kw=v, ...), Class2(...)]`, or (see `bare_if_single_preset`) a single
-    unwrapped `Class(...)` call. Populates `imports` (catalog_key -> import line) as a
+    unwrapped `Class(...)` call. Adds each class's import to `ctx.semantics_imports` as a
     side effect.
 
     `bare_if_single_preset`: pass True for a per-ASSET `semantics=` kwarg (never for the
@@ -115,31 +149,32 @@ def _render_semantics_value(
     MatterixRigidObjectCfg), so not fixed here; extend catalog.json with the real
     rigid/static distinction if/when a scene actually needs it.
     """
-    if bare_if_single_preset and len(semantics) == 1 and semantics[0].preset in catalog.semantic_presets:
+    if bare_if_single_preset and len(semantics) == 1 and semantics[0].preset in ctx.catalog.semantic_presets:
         sem = semantics[0]
-        class_name, import_line = _semantics_class_and_import(catalog, sem.preset)
-        imports[sem.preset] = import_line
+        class_name, import_line = _semantics_class_and_import(ctx.catalog, sem.preset)
+        ctx.semantics_imports.add(import_line)
         rendered_kwargs = ", ".join(_render_kwarg(k, v) for k, v in sem.params.items())
         return f"{class_name}({rendered_kwargs})"
 
     parts = []
     for sem in semantics:
-        class_name, import_line = _semantics_class_and_import(catalog, sem.preset)
-        imports[sem.preset] = import_line
+        class_name, import_line = _semantics_class_and_import(ctx.catalog, sem.preset)
+        ctx.semantics_imports.add(import_line)
         rendered_kwargs = ", ".join(_render_kwarg(k, v) for k, v in sem.params.items())
         parts.append(f"{class_name}({rendered_kwargs})")
     return "[" + ", ".join(parts) + "]"
 
 
-def _render_asset_entry(slot: str, asset: AssetSpec, class_name: str, catalog: Catalog, imports: dict[str, str]) -> str:
+def _render_asset_entry(slot: str, asset: AssetSpec, ctx: _CompileContext) -> str:
     kwargs = [f"pos={asset.pos!r}"]
     if asset.rot is not None:
         kwargs.append(f"rot={asset.rot!r}")
     if asset.mass is not None:
         kwargs.append(f"mass={asset.mass!r}")
     if asset.semantics:
-        rendered = _render_semantics_value(asset.semantics, catalog, imports, bare_if_single_preset=True)
+        rendered = _render_semantics_value(asset.semantics, ctx, bare_if_single_preset=True)
         kwargs.append(f"semantics={rendered}")
+    class_name = ctx.asset_class_names[slot]
     return f'{_INDENT2}"{slot}": {class_name}({", ".join(kwargs)}),'
 
 
@@ -176,13 +211,23 @@ def _render_event_cfg_body(spec: SceneSpec) -> str:
     return "\n".join(lines)
 
 
-def _render_articulations_group(articulated_slots: list[str], robot_meta_by_slot: dict[str, RobotMetadata]) -> str:
-    if not articulated_slots:
+def _render_articulations_group(ctx: _CompileContext) -> str:
+    if not ctx.articulated_slots:
         return f"{_INDENT2}pass"
     return "\n".join(
-        f'{_INDENT2}locals().update(robot_obs_terms("{slot}", {robot_meta_by_slot[slot].action_space_const}))'
-        for slot in articulated_slots
+        f'{_INDENT2}locals().update(robot_obs_terms("{slot}", {ctx.robot_meta_by_slot[slot].action_space_const}))'
+        for slot in ctx.articulated_slots
     )
+
+
+def _render_frame_obs_terms(slot: str, frames: tuple[str, ...]) -> list[str]:
+    return [
+        f"{_INDENT2}{slot}__{frame}_frame = ObsTerm(\n"
+        f"{_INDENT2}    func=mdp.frame_world_pose, "
+        f'params={{"asset_name": "{slot}", "frame_name": "{frame}"}}\n'
+        f"{_INDENT2})"
+        for frame in frames
+    ]
 
 
 def _render_rigid_objects_group(pick_targets: list[str], place_targets: list[str]) -> str:
@@ -196,24 +241,12 @@ def _render_rigid_objects_group(pick_targets: list[str], place_targets: list[str
         lines.append(
             f'{_INDENT2}{slot}__object_world_quat = ObsTerm(func=mdp.object_world_quat, params={{"asset_name": "{slot}"}})'
         )
-        for frame in ("pre_grasp", "grasp", "post_grasp"):
-            lines.append(
-                f"{_INDENT2}{slot}__{frame}_frame = ObsTerm(\n"
-                f"{_INDENT2}    func=mdp.frame_world_pose, "
-                f'params={{"asset_name": "{slot}", "frame_name": "{frame}"}}\n'
-                f"{_INDENT2})"
-            )
+        lines += _render_frame_obs_terms(slot, ("pre_grasp", "grasp", "post_grasp"))
     for slot in place_targets:
         # Place targets only get their frame poses (pre_place/place), not object_world_pos/
         # quat -- VERIFIED against exp3_heater_transfer's ika_plate (a place target, never
         # picked up, so its own world pose isn't part of the SM-driven grasp/place loop).
-        for frame in ("pre_place", "place"):
-            lines.append(
-                f"{_INDENT2}{slot}__{frame}_frame = ObsTerm(\n"
-                f"{_INDENT2}    func=mdp.frame_world_pose, "
-                f'params={{"asset_name": "{slot}", "frame_name": "{frame}"}}\n'
-                f"{_INDENT2})"
-            )
+        lines += _render_frame_obs_terms(slot, ("pre_place", "place"))
     return "\n".join(lines)
 
 
@@ -241,7 +274,7 @@ def _policy_terms_for_asset(asset: AssetSpec) -> list[tuple[str, str]]:
     return terms
 
 
-def _render_policy_group(spec: SceneSpec, articulated_slots: list[str]) -> str:
+def _render_policy_group(ctx: _CompileContext) -> str:
     """Empty string if no asset has any semantics at all -- matching exp1_beaker_pick's
     total absence of a PolicyCfg group (see compile_scene()'s conditional use of this).
 
@@ -255,10 +288,10 @@ def _render_policy_group(spec: SceneSpec, articulated_slots: list[str]) -> str:
     """
     lines = [
         f'{_INDENT2}ee_pos_{slot} = ObsTerm(func=mdp.ee_env_pos, params={{"asset_name": "{slot}"}})'
-        for slot in articulated_slots
+        for slot in ctx.articulated_slots
     ]
     n_ee_lines = len(lines)
-    for slot, asset in spec.assets.items():
+    for slot, asset in ctx.spec.assets.items():
         for suffix, mdp_func in _policy_terms_for_asset(asset):
             lines.append(f'{_INDENT2}{slot}_{suffix} = ObsTerm(func=mdp.{mdp_func}, params={{"asset_name": "{slot}"}})')
     if len(lines) == n_ee_lines:
@@ -266,9 +299,7 @@ def _render_policy_group(spec: SceneSpec, articulated_slots: list[str]) -> str:
     return "\n".join(lines)
 
 
-def _resolve_step_kwargs(
-    action: str, params: dict, catalog: Catalog, robot_meta_by_slot: dict[str, RobotMetadata], action_imports: dict[str, str]
-) -> tuple[str, str]:
+def _resolve_step_kwargs(action: str, params: dict, ctx: _CompileContext) -> tuple[str, str]:
     """(class_name, rendered_kwargs_string) for one action+params pair. Injects
     action_space_info the same way for every step (atomic, bundle-inline, or the shared
     dict a bundle `ref` reuses) -- one place for this rule, not copy-pasted per caller.
@@ -279,17 +310,36 @@ def _resolve_step_kwargs(
     step to step. models.py's `_validate_step` already guarantees `agent_assets` (when
     present) names a declared, articulated asset slot, so the lookup here can't miss.
     """
-    entry = catalog.actions[action]
+    entry = ctx.catalog.actions[action]
     class_name = entry["class"].rsplit(".", 1)[-1]
-    action_imports[class_name] = f"from matterix_sm import {class_name}"
+    ctx.action_imports.add(f"from matterix_sm import {class_name}")
 
     kwargs = dict(params)
     if "action_space_info" in entry["fields"] and "agent_assets" in kwargs:
         agent_assets = kwargs["agent_assets"]
         first_agent = agent_assets[0] if isinstance(agent_assets, list) else agent_assets
-        kwargs["action_space_info"] = robot_meta_by_slot[first_agent].action_space_const
+        kwargs["action_space_info"] = ctx.robot_meta_by_slot[first_agent].action_space_const
     rendered = ", ".join(_render_kwarg(k, v) for k, v in kwargs.items())
     return class_name, rendered
+
+
+def _render_step_call(action: str, params: dict, ctx: _CompileContext, *, const_name: str | None) -> tuple[str, str | None]:
+    """The single `Cls(...)` text for one action+params pair, plus (only when `const_name`
+    is given) the `const_name = dict(...)` line it should be paired with.
+
+    `const_name` given: renders `Cls(**const_name)` and returns the matching `const_name =
+    dict(kwargs)` line as well, for the caller to place once at module level -- used for
+    an atomic entry a bundle `ref`s (see BundleStep's docstring for why the atomic dict
+    entry and every bundle that refs it must share, not duplicate, the same kwargs).
+    `const_name` omitted (None): renders `Cls(kwargs)` inline, second return value None --
+    used for a plain atomic entry, a bundle-inline step, and (again, discarding the
+    duplicate const line) a bundle step that `ref`s an atomic entry which already emitted
+    its own const line when `spec.workflows` was processed.
+    """
+    cls_name, rendered_kwargs = _resolve_step_kwargs(action, params, ctx)
+    if const_name is not None:
+        return f"{cls_name}(**{const_name})", f"{const_name} = dict({rendered_kwargs})"
+    return f"{cls_name}({rendered_kwargs})", None
 
 
 def _collect_steps(spec: SceneSpec) -> list[WorkflowStep | BundleStep]:
@@ -305,40 +355,51 @@ def _collect_steps(spec: SceneSpec) -> list[WorkflowStep | BundleStep]:
     return steps
 
 
-def compile_scene(spec: SceneSpec) -> tuple[str, str]:
-    """Render `spec` into (env_cfg_py_text, init_py_text). Raises CompileError naming the
-    exact problem for anything this function itself detects (e.g. an unknown robot in
-    robot_metadata.py) -- spec is assumed already validated (see models.py); this function
-    does not re-check catalog names/fields.
-    """
-    catalog = load_catalog()
-    class_name = _class_name_for(spec)
-
+def _build_context(spec: SceneSpec, catalog: Catalog) -> _CompileContext:
     articulated_slots = [s for s, a in spec.assets.items() if a.kind == "articulated"]
     object_slots = [s for s, a in spec.assets.items() if a.kind == "object"]
-
     if not articulated_slots:
         raise CompileError("SceneSpec has no articulated (robot) asset -- nothing to drive a workflow.")
 
-    # Each robot's OWN metadata drives its own action_space_info (see
-    # _resolve_step_kwargs()) and ArticulationsGroup entry (see
-    # _render_articulations_group()) -- a multi-agent scene's robots can be different
-    # models. gripper_joint_names is the one exception: MatterixBaseEnvCfg.
-    # gripper_joint_names is a single SCENE-level list, not per-robot (an upstream Matterix
-    # limitation, not something this compiler can route around -- see robot_metadata.py's
-    # docstring), so every robot in the scene must resolve to the SAME value; fail loudly
-    # with a clear message rather than silently picking one if they don't.
+    # Each robot's OWN metadata drives its own action_space_info (_resolve_step_kwargs())
+    # and ArticulationsGroup entry (_render_articulations_group()) -- a multi-agent
+    # scene's robots can be different models.
     robot_meta_by_slot = {slot: get_robot_metadata(spec.assets[slot].catalog) for slot in articulated_slots}
-    gripper_joint_names_options = {tuple(m.gripper_joint_names) for m in robot_meta_by_slot.values()}
-    if len(gripper_joint_names_options) > 1:
+
+    asset_class_names: dict[str, str] = {}
+    ctx = _CompileContext(
+        spec=spec,
+        catalog=catalog,
+        articulated_slots=articulated_slots,
+        object_slots=object_slots,
+        robot_meta_by_slot=robot_meta_by_slot,
+        asset_class_names=asset_class_names,
+    )
+    for slot, asset in spec.assets.items():
+        cls_name = catalog.assets[asset.catalog]["class"].rsplit(".", 1)[-1]
+        asset_class_names[slot] = cls_name
+        ctx.asset_imports.add(_asset_import(asset.catalog, cls_name))
+    return ctx
+
+
+def _resolve_gripper_joint_names(ctx: _CompileContext) -> list[str]:
+    """MatterixBaseEnvCfg.gripper_joint_names is a single SCENE-level list, not per-robot
+    (an upstream Matterix limitation, not something this compiler can route around -- see
+    robot_metadata.py's docstring), so every robot in the scene must resolve to the SAME
+    value; fail loudly with a clear message rather than silently picking one if they don't.
+    """
+    options = {tuple(m.gripper_joint_names) for m in ctx.robot_meta_by_slot.values()}
+    if len(options) > 1:
+        by_slot = {slot: ctx.robot_meta_by_slot[slot].gripper_joint_names for slot in ctx.articulated_slots}
         raise CompileError(
-            "Scene has articulated assets with different gripper_joint_names "
-            f"({ {slot: robot_meta_by_slot[slot].gripper_joint_names for slot in articulated_slots} }) -- "
+            f"Scene has articulated assets with different gripper_joint_names ({by_slot}) -- "
             "MatterixBaseEnvCfg.gripper_joint_names is a single scene-level list, so one scene "
             "can't mix robots with different grippers. Split into more than one scene."
         )
-    gripper_joint_names = list(next(iter(gripper_joint_names_options)))
+    return list(next(iter(options)))
 
+
+def _pick_and_place_targets(spec: SceneSpec) -> tuple[list[str], list[str]]:
     all_steps = _collect_steps(spec)
     # dict.fromkeys(), not a set: preserves first-seen order (cosmetic, for stable/
     # readable output) while still deduping -- the SAME object/target named by more than
@@ -351,87 +412,66 @@ def compile_scene(spec: SceneSpec) -> tuple[str, str]:
     place_targets = list(
         dict.fromkeys(s.params["target"] for s in all_steps if s.action == "place_object" and "target" in s.params)
     )
+    return pick_targets, place_targets
 
-    semantics_imports: dict[str, str] = {}  # catalog key -> import line
 
-    asset_imports: dict[str, str] = {}  # catalog_key -> import line, de-duplicated
-    asset_class_names: dict[str, str] = {}  # slot -> class name
-    for slot, asset in spec.assets.items():
-        entry = catalog.assets[asset.catalog]
-        cls_name = entry["class"].rsplit(".", 1)[-1]
-        asset_class_names[slot] = cls_name
-        asset_imports[asset.catalog] = _asset_import(asset.catalog, cls_name)
+def _render_workflows_body(spec: SceneSpec, ctx: _CompileContext) -> tuple[str, list[str]]:
+    """(workflows_dict_body, const_lines) -- the full `workflows = {...}` dict contents
+    (atomic entries and bundles together, bundles as list literals -- see BundleStep's
+    docstring for why both land in the same dict) plus the module-level `_X_KWARGS`
+    constants any bundle `ref` needs.
 
-    action_imports: dict[str, str] = {}
-
-    # Atomic entries referenced by at least one bundle get a module-level `_X_KWARGS`
-    # constant, shared verbatim between the atomic dict entry and every bundle that refs
-    # it -- see BundleStep's docstring for why this matters (workflow_overrides mutates a
-    # workflow's Cfg instance in place; two entries sharing one instance, not two
-    # separately-typed-but-equal ones, is what keeps an override from silently failing to
-    # reach the bundle, or leaking into it unexpectedly). Entries no bundle refs keep the
-    # plain inline-kwargs form (unchanged from a scene with no bundles at all).
+    Atomic entries referenced by at least one bundle get a module-level `_X_KWARGS`
+    constant, shared verbatim between the atomic dict entry and every bundle that refs
+    it -- see BundleStep's docstring for why this matters (workflow_overrides mutates a
+    workflow's Cfg instance in place; two entries sharing one instance, not two
+    separately-typed-but-equal ones, is what keeps an override from silently failing to
+    reach the bundle, or leaking into it unexpectedly). Entries no bundle refs keep the
+    plain inline-kwargs form (unchanged from a scene with no bundles at all).
+    """
     refd_names = {bstep.ref for steps in spec.bundles.values() for bstep in steps if bstep.ref is not None}
 
     const_lines: list[str] = []
     workflow_lines: list[str] = []
     for wf_name, step in spec.workflows.items():
-        cls_name, rendered_kwargs = _resolve_step_kwargs(
-            step.action, step.params, catalog, robot_meta_by_slot, action_imports
-        )
-        if wf_name in refd_names:
-            const_name = _kwargs_const_name(wf_name)
-            const_lines.append(f"{const_name} = dict({rendered_kwargs})")
-            workflow_lines.append(f'{_INDENT2}"{wf_name}": {cls_name}(**{const_name}),')
-        else:
-            workflow_lines.append(f'{_INDENT2}"{wf_name}": {cls_name}({rendered_kwargs}),')
+        const_name = _kwargs_const_name(wf_name) if wf_name in refd_names else None
+        call_text, const_line = _render_step_call(step.action, step.params, ctx, const_name=const_name)
+        if const_line is not None:
+            const_lines.append(const_line)
+        workflow_lines.append(f'{_INDENT2}"{wf_name}": {call_text},')
 
     for bundle_name, bsteps in spec.bundles.items():
         item_lines = []
         for bstep in bsteps:
             if bstep.ref is not None:
                 atomic = spec.workflows[bstep.ref]
-                cls_name, _ = _resolve_step_kwargs(
-                    atomic.action, atomic.params, catalog, robot_meta_by_slot, action_imports
+                call_text, _ = _render_step_call(
+                    atomic.action, atomic.params, ctx, const_name=_kwargs_const_name(bstep.ref)
                 )
-                item_lines.append(f"{_INDENT3}{cls_name}(**{_kwargs_const_name(bstep.ref)}),")
             else:
-                cls_name, rendered_kwargs = _resolve_step_kwargs(
-                    bstep.action, bstep.params, catalog, robot_meta_by_slot, action_imports
-                )
-                item_lines.append(f"{_INDENT3}{cls_name}({rendered_kwargs}),")
+                call_text, _ = _render_step_call(bstep.action, bstep.params, ctx, const_name=None)
+            item_lines.append(f"{_INDENT3}{call_text},")
         workflow_lines.append(f'{_INDENT2}"{bundle_name}": [\n' + "\n".join(item_lines) + f"\n{_INDENT2}],")
 
-    objects_body = "\n".join(
-        _render_asset_entry(s, spec.assets[s], asset_class_names[s], catalog, semantics_imports) for s in object_slots
-    )
-    articulated_assets_body = "\n".join(
-        _render_asset_entry(s, spec.assets[s], asset_class_names[s], catalog, semantics_imports)
-        for s in articulated_slots
-    )
-    global_semantics_line = ""
-    if spec.global_semantics:
-        rendered = _render_semantics_value(spec.global_semantics, catalog, semantics_imports)
-        global_semantics_line = f"{_INDENT1}semantics = {rendered}"
+    return "\n".join(workflow_lines), const_lines
 
-    policy_group_body = _render_policy_group(spec, articulated_slots)
-    rigid_objects_group_body = _render_rigid_objects_group(pick_targets, place_targets)
 
-    import_lines = [
+def _render_import_lines(ctx: _CompileContext, const_lines: list[str]) -> list[str]:
+    lines = [
         "from matterix.envs import MatterixBaseEnvCfg, mdp",
         "from matterix.managers import EventManagerCfg",
-        *sorted(semantics_imports.values()),
-        *sorted(asset_imports.values()),
+        *sorted(ctx.semantics_imports),
+        *sorted(ctx.asset_imports),
     ]
-    if articulated_slots:
-        import_lines.append("from user.matterix_bridge.scenes.common import robot_obs_terms")
-    import_lines += sorted(action_imports.values())
+    if ctx.articulated_slots:
+        lines.append("from user.matterix_bridge.scenes.common import robot_obs_terms")
+    lines += sorted(ctx.action_imports)
     # Every distinct action-space constant any robot in the scene needs -- each robot's
     # own ArticulationsGroup entry (_render_articulations_group()) always needs its own
     # constant regardless of whether any workflow step happens to reference that robot.
-    action_space_consts = sorted({m.action_space_const for m in robot_meta_by_slot.values()})
-    import_lines.append(f"from matterix_sm.robot_action_spaces import {', '.join(action_space_consts)}")
-    import_lines += [
+    action_space_consts = sorted({m.action_space_const for m in ctx.robot_meta_by_slot.values()})
+    lines.append(f"from matterix_sm.robot_action_spaces import {', '.join(action_space_consts)}")
+    lines += [
         "",
         "import isaaclab.envs.mdp as isaaclab_mdp",
         "from isaaclab.managers import EventTermCfg as EventTerm",
@@ -441,7 +481,39 @@ def compile_scene(spec: SceneSpec) -> tuple[str, str]:
         "from isaaclab.utils import configclass",
     ]
     if const_lines:
-        import_lines += ["", *const_lines]
+        lines += ["", *const_lines]
+    return lines
+
+
+def compile_scene(spec: SceneSpec) -> tuple[str, str]:
+    """Render `spec` into (env_cfg_py_text, init_py_text). Raises CompileError naming the
+    exact problem for anything this function itself detects (e.g. an unknown robot in
+    robot_metadata.py, or two robots with different gripper_joint_names) -- spec is
+    assumed already validated (see models.py); this function does not re-check catalog
+    names/fields.
+    """
+    catalog = load_catalog()
+    ctx = _build_context(spec, catalog)
+    gripper_joint_names = _resolve_gripper_joint_names(ctx)
+
+    # Order matters here: several calls below add to ctx.semantics_imports/action_imports
+    # as a side effect, and those are only read once, by _render_import_lines(), last.
+    workflows_body, const_lines = _render_workflows_body(spec, ctx)
+
+    pick_targets, place_targets = _pick_and_place_targets(spec)
+    objects_body = "\n".join(_render_asset_entry(s, spec.assets[s], ctx) for s in ctx.object_slots)
+    articulated_assets_body = "\n".join(_render_asset_entry(s, spec.assets[s], ctx) for s in ctx.articulated_slots)
+
+    global_semantics_line = ""
+    if spec.global_semantics:
+        rendered = _render_semantics_value(spec.global_semantics, ctx)
+        global_semantics_line = f"{_INDENT1}semantics = {rendered}"
+
+    policy_group_body = _render_policy_group(ctx)
+    rigid_objects_group_body = _render_rigid_objects_group(pick_targets, place_targets)
+    articulations_group_body = _render_articulations_group(ctx)
+
+    import_lines = _render_import_lines(ctx, const_lines)
 
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(str(_TEMPLATES_DIR)),
@@ -451,13 +523,14 @@ def compile_scene(spec: SceneSpec) -> tuple[str, str]:
         undefined=jinja2.StrictUndefined,
     )
 
+    class_name = _class_name_for(spec)
     env_cfg_text = env.get_template("env_cfg.py.jinja2").render(
         scene_name=spec.name,
         imports="\n".join(import_lines),
         event_cfg_body=_render_event_cfg_body(spec),
         has_policy_group=bool(policy_group_body),
         policy_group_body=policy_group_body,
-        articulations_group_body=_render_articulations_group(articulated_slots, robot_meta_by_slot),
+        articulations_group_body=articulations_group_body,
         rigid_objects_group_body=rigid_objects_group_body,
         class_name=class_name,
         env_spacing=repr(spec.env_spacing),
@@ -468,7 +541,7 @@ def compile_scene(spec: SceneSpec) -> tuple[str, str]:
         objects_body=objects_body,
         articulated_assets_body=articulated_assets_body,
         global_semantics_line=global_semantics_line,
-        workflows_body="\n".join(workflow_lines),
+        workflows_body=workflows_body,
     )
 
     init_text = env.get_template("scene_init.py.jinja2").render(
