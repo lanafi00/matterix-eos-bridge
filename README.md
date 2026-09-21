@@ -44,19 +44,32 @@ Example workflow, as included in this package:
 
 You don't need to touch this repo. Your package just imports it.
 
-1. **Scene.** Copy the closest example under `scenes/`. This is what decides the gym id and workflow key names you'll use in step 2. Needs an `__init__.py`:
+1. **Scene.** This decides the gym id and workflow key names you'll use in step 2. Two ways to make one:
 
-   ```python
-   import gymnasium as gym
-   from . import my_scene_env_cfg
+   - **YAML (recommended).** Write a scene spec, no Python needed. See `scene_specs/*.yaml` for examples, `schema/models.py` for the full schema, and `eos/user/beaker_lab` for a real package using this end to end.
 
-   gym.register(
-       id="Matterix-Experiment-My-Scene-v1",
-       entry_point="matterix.envs:MatterixBaseEnv",
-       kwargs={"env_cfg_entry_point": my_scene_env_cfg.MySceneEnvCfg},
-       disable_env_checker=True,
-   )
-   ```
+     ```bash
+     python -m schema.compile_scene <your_package>/scene_specs/my_scene.yaml \
+         --scenes-dir <your_package>/scenes
+     ```
+
+     Run from this repo's root. No conda env or Isaac Sim boot needed -- just validates against `catalog.json` and writes the Python for you. Covers asset placement, semantics, randomization, multi-robot scenes, and plain/composite workflows.
+
+   - **Hand-written Python**, for anything the YAML schema doesn't cover yet. Copy the closest example under `scenes/`. Needs an `__init__.py`:
+
+     ```python
+     import gymnasium as gym
+     from . import my_scene_env_cfg
+
+     gym.register(
+         id="Matterix-Experiment-My-Scene-v1",
+         entry_point="matterix.envs:MatterixBaseEnv",
+         kwargs={"env_cfg_entry_point": my_scene_env_cfg.MySceneEnvCfg},
+         disable_env_checker=True,
+     )
+     ```
+
+   Nothing else to wire up -- your package's `scenes/__init__.py` doesn't need to list this scene. `_discover_scene_modules()` finds every scene subpackage on its own; the YAML path even creates `scenes/__init__.py` for you if this is your package's first scene.
 
 2. **Register the protocol/task -> Matterix bindings**, in `<your_package>/matterix_registrations.py` (plain strings only), using the gym id and workflow keys from step 1:
 

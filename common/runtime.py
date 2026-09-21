@@ -119,16 +119,32 @@ def _discover_user_package_dirs(user_dir) -> list:
 
 
 def _discover_scene_modules() -> None:
-    """Import every EOS package's `scenes` subpackage, if it has one.
+    """Import every EOS package's `scenes` subpackage, if it has one -- AND every scene
+    submodule under it, whether or not that package's own `scenes/__init__.py` imports it
+    by hand.
 
-    Registers that package's Matterix Gym environments as a side effect of import (see
-    this repo's own `scenes/__init__.py` for the pattern) -- this is what lets a package
-    other than matterix_bridge define its own scenes without editing anything inside
-    this repo: it just needs a `scenes/` subpackage with an `__init__.py` that calls
-    `gym.register()`, following the same convention this package's own `scenes/`
-    directory uses. Uses `_discover_user_package_dirs()` above (not EOS's own package
-    discovery) so this stays importable in an isaaclab-only conda env with no `eos`
-    installed -- see that function's docstring for why.
+    Registers each Matterix Gym environment as a side effect of import (see this repo's
+    own `scenes/__init__.py` for the pattern) -- this is what lets a package other than
+    matterix_bridge define its own scenes without editing anything inside this repo: it
+    just needs a `scenes/` subpackage (with an `__init__.py`, even an empty one -- its
+    presence is the "this package has scenes" signal `_discover_user_package_dirs()`-style
+    directory scanning can't give for free) containing per-scene subpackages that call
+    `gym.register()`, following the convention this package's own `scenes/` directory
+    uses. Uses `_discover_user_package_dirs()` above (not EOS's own package discovery) so
+    this stays importable in an isaaclab-only conda env with no `eos` installed -- see
+    that function's docstring for why.
+
+    The per-scene `pkgutil.iter_modules()` walk below is what makes listing each new scene
+    in `scenes/__init__.py` (`from . import my_scene`) optional rather than required --
+    compiling a scene (schema/compile_scene.py) or copying an exp*/ example is now enough
+    on its own; this function finds it regardless. Existing explicit imports (this
+    package's own `scenes/__init__.py` lists exp1-4) keep working unchanged -- re-importing
+    an already-imported module is a cached no-op, not a double `gym.register()` call, so
+    there's nothing to clean up and no risk in mixing both styles in one `scenes/__init__.py`.
+    Only packages (subdirectories with their own `__init__.py`), not stray modules placed
+    directly under `scenes/` (e.g. this repo's own `scenes/common.py`, shared helpers, not
+    a scene itself) -- `ispkg` on each `pkgutil.iter_modules()` result is what distinguishes
+    them.
 
     Scene definitions only -- NOT where catalog assets/device twins get registered (see
     `_discover_device_registrations()` below, called first in `_get_env()`). A scene
@@ -136,12 +152,17 @@ def _discover_scene_modules() -> None:
     get referenced (eventually, placed) into a scene, not the other way around.
     """
     import importlib
+    import pkgutil
     from pathlib import Path
 
     user_dir = Path(_eos_path()) / "user"
     for package_dir in _discover_user_package_dirs(user_dir):
-        if (package_dir / "scenes" / "__init__.py").is_file():
-            importlib.import_module(f"user.{package_dir.name}.scenes")
+        if not (package_dir / "scenes" / "__init__.py").is_file():
+            continue
+        scenes_module = importlib.import_module(f"user.{package_dir.name}.scenes")
+        for module_info in pkgutil.iter_modules(scenes_module.__path__):
+            if module_info.ispkg:
+                importlib.import_module(f"{scenes_module.__name__}.{module_info.name}")
 
 
 def _discover_device_registrations() -> None:
