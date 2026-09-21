@@ -106,12 +106,12 @@ should print `PASS`; a `FAIL` or an uncaught traceback means something regressed
   to the twin (both describe the slot's role in the scene), but lets the twin's own class
   defaults win for physically-intrinsic fields (usd_path, mass, scale, frames).
 
-## Declarative scene schema (in progress)
+## Declarative scene schema
 
-Working toward a thin YAML/JSON schema (asset catalog entry, pos/rot, semantics preset +
-params, workflow step sequence) that compiles to a scene's `*_env_cfg.py`, so authoring a
-scene doesn't mean hand-writing `@configclass` Python — see the review discussion for the
-full rationale (schema-validate before ever paying Isaac Sim's 1-2 min boot cost).
+A thin YAML schema (asset catalog entry, pos/rot, semantics preset + params, workflow step
+sequence) that compiles to a scene's `*_env_cfg.py`, so authoring a scene doesn't mean
+hand-writing `@configclass` Python — see the review discussion for the full rationale
+(schema-validate before ever paying Isaac Sim's 1-2 min boot cost).
 
 **`dump_catalog.py`** (repo root, run the same way as `smoke_test.py`) boots Isaac Sim
 once and dumps every asset/action/semantics class Matterix currently ships — name, and
@@ -135,25 +135,26 @@ env or Isaac Sim boot needed:
 ```
 
 writes `scenes/<name>/<name>_env_cfg.py` + `__init__.py` — same shape and convention as a
-hand-authored scene, but a new one still needs a manual one-line addition to
-`scenes/__init__.py`'s own imports/`__all__` (same as adding any new `scenes/exp*/`) for
-`_discover_scene_modules()` to pick it up; the CLI doesn't edit that file for you.
+hand-authored scene, auto-discovered with no further edits needed
+(`_discover_scene_modules()` walks every scene subpackage under `scenes/`; see
+`common/runtime.py`).
 
 Scope covers what `exp1_beaker_pick`, `exp3_heater_transfer`, AND `exp4_dual_arm_handoff`
 all need (see `schema/models.py`'s docstring): asset placement, position/temperature
 randomization, plain and composite (bundled, ref-based) workflow steps, per-asset and
 global semantics, and multi-agent scenes (more than one articulated asset). All three
-round-tripped and live-verified:
-- `scene_specs/beaker_pick.yaml` → `scenes/beaker_pick_generated/` (`pickup_beaker`:
-  `success: true`).
-- `scene_specs/heater_transfer.yaml` → `scenes/heater_transfer_generated/`
-  (`turn_on_heater` and the full 14-step `pickup_and_place` composite: both
-  `success: true`, semantics engine visibly firing — heat transfer, contact detection,
-  ambient convection).
-- `scene_specs/dual_arm_handoff.yaml` → `scenes/dual_arm_handoff/` (two robots, each
-  workflow step's `action_space_info` resolved from THAT step's own `agent_assets`, not
-  one scene-wide "primary" robot — see `compiler.py`'s `_resolve_step_kwargs()`). Boots and
-  constructs correctly, but running its `handoff` workflow hits the exact same pre-existing
+round-tripped and live-verified against those examples (each compiled to `scenes/<name>/`,
+tested against Isaac Sim, then removed again -- a compiled scene is fully reproducible
+from its YAML in one command, so keeping the output checked in permanently would just be a
+duplicate of the exp*/ example it was round-tripped against; regenerate on demand instead):
+- `scene_specs/beaker_pick.yaml` (`pickup_beaker`: `success: true`).
+- `scene_specs/heater_transfer.yaml` (`turn_on_heater` and the full 14-step
+  `pickup_and_place` composite: both `success: true`, semantics engine visibly firing —
+  heat transfer, contact detection, ambient convection).
+- `scene_specs/dual_arm_handoff.yaml` (two robots, each workflow step's
+  `action_space_info` resolved from THAT step's own `agent_assets`, not one scene-wide
+  "primary" robot — see `compiler.py`'s `_resolve_step_kwargs()`). Boots and constructs
+  correctly, but running its `handoff` workflow hits the exact same pre-existing
   `ValueError: Invalid action shape, expected: 16, received: 8` as the hand-authored
   `exp4_dual_arm_handoff` (see "Known open gaps" below) — reproduced identically,
   confirming this is `matterix_sm`'s own multi-agent action-tensor-sizing limitation, not
@@ -200,8 +201,8 @@ rather than reproducing the confusing name.
 - Matterix's `PickObjectCfg`/`PlaceObjectCfg` report success based on the robot reaching a
   target end-effector pose, not on whether the object was actually grasped or placed — a
   workflow can report `success=True` with nothing physically achieved. Not yet addressed.
-- A two-robot scene (`exp4_dual_arm_handoff`, and the schema-compiled
-  `scenes/dual_arm_handoff/`) fails any workflow step at the very first action with
+- A two-robot scene (`exp4_dual_arm_handoff`, and the schema-compiled equivalent from
+  `scene_specs/dual_arm_handoff.yaml`) fails any workflow step at the very first action with
   `ValueError: Invalid action shape, expected: 16, received: 8` — VERIFIED against both
   the hand-authored file and its unmodified pre-refactor version (identical failure), so
   it's a real, pre-existing limitation, not something introduced by any change in this

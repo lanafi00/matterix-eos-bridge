@@ -19,9 +19,13 @@ Scenes, in increasing order of complexity:
     exp3_heater_transfer  - adds the semantics engine: turn on a heater, observe heat transfer.
     exp4_dual_arm_handoff - two Franka arms hand a beaker to each other via a shared station.
 
-Plus three schema/-compiled scenes (scene_specs/*.yaml -> schema/compile_scene.py; see
-CLAUDE.md) matching the first four's shapes -- beaker_pick_generated, heater_transfer_generated,
-dual_arm_handoff -- not listed below; `_discover_scene_modules()`'s auto-walk finds them.
+(scene_specs/*.yaml -> schema/compile_scene.py; see CLAUDE.md's "Declarative scene schema"
+section compiles a scene matching each of these four's shape into this same directory --
+not checked in permanently, since a compiled scene is fully reproducible from its YAML in
+one command and would otherwise just be a duplicate of the exp*/ example it was round-
+tripped against; regenerate on demand rather than keeping stale copies around. Whatever
+gets compiled here is picked up automatically -- see `_discover_scene_modules()`'s auto-
+walk, no listing needed below.)
 
 Their env ids are what protocol_registry.py's PROTOCOL_TWINS maps EOS protocol types onto.
 
