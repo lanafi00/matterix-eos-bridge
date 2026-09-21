@@ -4,7 +4,13 @@ matterix_bridge (and by extension EOS) has no functional dependency on that sand
 Each sub-package defines one self-contained environment (robots + objects + observations
 + workflows) and registers it as a Gym environment. Importing this package registers all
 of them -- see common/runtime.py's `_discover_scene_modules()`, which imports this
-package (and any other EOS package's own `scenes` subpackage) automatically.
+package (and any other EOS package's own `scenes` subpackage) automatically, AND walks
+every scene subpackage found under it -- a new scene doesn't need to be added to the
+imports below to be picked up (compiling one via schema/compile_scene.py, or copying an
+exp*/ example, is enough on its own); exp1-4 stay explicit here only because
+dump_catalog.py's own warm-up import (`import user.matterix_bridge.scenes`) needs AT
+LEAST ONE scene submodule imported as a side effect to trigger matterix_assets' circular-
+import fix, independent of `_discover_scene_modules()`'s own walk.
 
 Scenes, in increasing order of complexity:
 
@@ -12,6 +18,10 @@ Scenes, in increasing order of complexity:
     exp2_pick_and_place   - single Franka arm picks a beaker and places it on an IKA plate.
     exp3_heater_transfer  - adds the semantics engine: turn on a heater, observe heat transfer.
     exp4_dual_arm_handoff - two Franka arms hand a beaker to each other via a shared station.
+
+Plus three schema/-compiled scenes (scene_specs/*.yaml -> schema/compile_scene.py; see
+CLAUDE.md) matching the first four's shapes -- beaker_pick_generated, heater_transfer_generated,
+dual_arm_handoff -- not listed below; `_discover_scene_modules()`'s auto-walk finds them.
 
 Their env ids are what protocol_registry.py's PROTOCOL_TWINS maps EOS protocol types onto.
 
@@ -23,13 +33,10 @@ by this file importing one.
 """
 
 from . import (
-    beaker_pick_generated,
-    dual_arm_handoff,
     exp1_beaker_pick,
     exp2_pick_and_place,
     exp3_heater_transfer,
     exp4_dual_arm_handoff,
-    heater_transfer_generated,
 )
 
 __all__ = [
@@ -37,8 +44,4 @@ __all__ = [
     "exp2_pick_and_place",
     "exp3_heater_transfer",
     "exp4_dual_arm_handoff",
-    # schema/-compiled (see scene_specs/) -- CLAUDE.md
-    "beaker_pick_generated",
-    "heater_transfer_generated",
-    "dual_arm_handoff",
 ]
