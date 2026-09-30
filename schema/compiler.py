@@ -485,13 +485,25 @@ def _render_import_lines(ctx: _CompileContext, const_lines: list[str]) -> list[s
     return lines
 
 
-def compile_scene(spec: SceneSpec) -> tuple[str, str]:
+def compile_scene(spec: SceneSpec, *, regen_hint: str | None = None) -> tuple[str, str]:
     """Render `spec` into (env_cfg_py_text, init_py_text). Raises CompileError naming the
     exact problem for anything this function itself detects (e.g. an unknown robot in
     robot_metadata.py, or two robots with different gripper_joint_names) -- spec is
     assumed already validated (see models.py); this function does not re-check catalog
     names/fields.
+
+    `regen_hint` is the "how to regenerate this file" text in the generated header --
+    the compiler itself doesn't know or care which of compile_scene.py's
+    scene_specs/*.yaml or from_eos.py's lab.yml/matterix_workflow.yml built `spec`, so
+    the caller says how to reproduce it. Defaults to compile_scene.py's own
+    scene_specs/*.yaml command (this function's only caller before from_eos.py existed),
+    so existing callers that don't pass this keep getting identical output.
     """
+    if regen_hint is None:
+        regen_hint = (
+            f"Regenerate with:\n    python -m user.matterix_bridge.schema.compile_scene "
+            f"scene_specs/{spec.name}.yaml"
+        )
     catalog = load_catalog()
     ctx = _build_context(spec, catalog)
     gripper_joint_names = _resolve_gripper_joint_names(ctx)
@@ -526,6 +538,7 @@ def compile_scene(spec: SceneSpec) -> tuple[str, str]:
     class_name = _class_name_for(spec)
     env_cfg_text = env.get_template("env_cfg.py.jinja2").render(
         scene_name=spec.name,
+        regen_hint=regen_hint,
         imports="\n".join(import_lines),
         event_cfg_body=_render_event_cfg_body(spec),
         has_policy_group=bool(policy_group_body),
