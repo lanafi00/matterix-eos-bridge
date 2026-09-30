@@ -404,8 +404,8 @@ def _pick_and_place_targets(spec: SceneSpec) -> tuple[list[str], list[str]]:
     # dict.fromkeys(), not a set: preserves first-seen order (cosmetic, for stable/
     # readable output) while still deduping -- the SAME object/target named by more than
     # one step (e.g. an atomic entry and a bundle-only variant both picking "beaker",
-    # VERIFIED to happen in scene_specs/heater_transfer.yaml's "pick_beaker"/
-    # "observe_heating") would otherwise emit the same ObsTerm class attribute twice.
+    # VERIFIED to happen in a heater_transfer-shaped scene's "pick_beaker"/
+    # "observe_heating" steps) would otherwise emit the same ObsTerm class attribute twice.
     pick_targets = list(
         dict.fromkeys(s.params["object"] for s in all_steps if s.action == "pick_object" and "object" in s.params)
     )

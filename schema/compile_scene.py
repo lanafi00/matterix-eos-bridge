@@ -5,7 +5,7 @@ point (see schema/__init__.py's docstring): catching an authoring mistake here c
 milliseconds, not the 1-2 minute Isaac Sim boot a mistake would otherwise cost.
 
 Usage:
-    python -m user.matterix_bridge.schema.compile_scene scene_specs/beaker_pick.yaml
+    python -m user.matterix_bridge.schema.compile_scene <your_package>/scene_specs/my_scene.yaml
 """
 
 from __future__ import annotations
