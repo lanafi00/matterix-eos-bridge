@@ -113,6 +113,24 @@ sequence) that compiles to a scene's `*_env_cfg.py`, so authoring a scene doesn'
 hand-writing `@configclass` Python — see the review discussion for the full rationale
 (schema-validate before ever paying Isaac Sim's 1-2 min boot cost).
 
+Two ways to reach a `SceneSpec` (the pydantic model `compiler.py` actually renders, see
+`schema/models.py`): a hand-authored `scene_specs/*.yaml` (`compile_scene.py`, below), or
+— for an EOS package that wants zero bridge-owned scene YAML at all — `schema/from_eos.py`,
+which builds one directly from that package's own `labs/<lab>/lab.yml` (device/resource
+`meta` carries `matterix_catalog`/`pos`/`randomize_position`/etc.) plus each relevant
+protocol's `matterix_workflow.yml` (the one thing `lab.yml` can't express: which Matterix
+action backs a given EOS task). It also generates that package's `matterix_registrations.py`.
+Uses `meta`, not `init_parameters`, deliberately — EOS's `LabValidator` cross-checks
+`init_parameters` keys against `device.yml`'s declared set and raises on anything unknown,
+but `meta` is a genuinely unvalidated bag on `LabDeviceDef`/`ResourceTypeDef`/`ResourceDef`
+(confirmed by reading `eos/configuration/entities/lab_def.py` and grepping for any
+validator touching it — there is none), so real-mode `eos start` never trips on it. See
+`eos/user/beaker_lab` for this compiled end to end, and `schema/from_eos.py`'s own
+docstring for the exact file layout. Known gap: `lab.yml` has no scene-level settings slot
+(no top-level `meta` on `LabDef` itself), so a from_eos.py-generated scene always gets
+`SceneSpec`'s default `env_spacing`/`episode_length_s` — only `scene_specs/*.yaml` can
+override those today.
+
 **`dump_catalog.py`** (repo root, run the same way as `smoke_test.py`) boots Isaac Sim
 once and dumps every asset/action/semantics class Matterix currently ships — name, and
 constructor field signature (required vs. default) — to `catalog.json`, checked in (not

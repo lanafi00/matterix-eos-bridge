@@ -42,11 +42,90 @@ Example workflow, as included in this package:
 
 ## Using this from your own EOS package
 
-You don't need to touch this repo. Your package just imports it.
+You don't need to touch this repo. Your package just imports it. Two ways to get a scene
++ registrations; pick one, then both converge on the same device driver step.
+
+### Option A: straight from your EOS package's own files (recommended)
+
+No scene-authoring file of any kind -- positions and catalog keys live in `lab.yml`
+itself, which you're writing anyway. See `eos/user/beaker_lab` for a real package using
+this end to end, and `schema/from_eos.py`'s own docstring / `schema/models.py`'s
+`WorkflowBindingSpec` for the full schema this reads.
+
+1. **Positions and catalog keys go on your devices/resources' `meta` dict in
+   `<your_package>/labs/<lab_name>/lab.yml`** -- `meta` is EOS's own unvalidated metadata
+   bag (unlike `init_parameters`, nothing in EOS cross-checks it), so real-mode `eos
+   start` never looks at these keys:
+
+   ```yaml
+   devices:
+     my_arm:
+       init_parameters:
+         backend: sim
+       meta:
+         matterix_catalog: robots/franka_panda_high_pd_ik
+         pos: [0.0, 0.0, 0.0]
+
+   resource_types:
+     beaker:
+       meta:
+         matterix_catalog: labware/beaker_500ml_inst
+
+   resources:
+     beaker_1:
+       type: beaker
+       meta:
+         pos: [0.6, 0.05, 0.05]
+         randomize_position:
+           x: [-0.1, 0.1]
+   ```
+
+   Pure scene furniture with no real device/resource behind it (a table nothing ever
+   allocates) still gets declared as a `resource_type`/`resource` pair -- it just never
+   appears in any `protocol.yml` task's `resources:` block.
+
+2. **The one thing that can't come from `lab.yml`: which Matterix action backs each EOS
+   task.** Declare it in `<your_package>/protocols/<protocol_type>/matterix_workflow.yml`
+   (a sibling of that protocol's own `protocol.yml`) -- `agent_assets`/`object`/`target`
+   name assets directly by their `lab.yml` device/resource name:
+
+   ```yaml
+   task_workflows:
+     my_task: my_workflow
+
+   workflows:
+     my_workflow:
+       action: pick_object
+       params:
+         agent_assets: my_arm
+         object: beaker_1
+   ```
+
+3. **Generate the scene + `matterix_registrations.py` together:**
+
+   ```bash
+   python -m schema.from_eos <your_package>
+   ```
+
+   Run from this repo's root. No conda env or Isaac Sim boot needed -- reads your
+   `lab.yml`/`matterix_workflow.yml`, validates against `catalog.json`, writes
+   `<your_package>/scenes/<lab_name>/` AND `<your_package>/matterix_registrations.py` for
+   you (regenerate both by rerunning this after editing either file -- don't hand-edit
+   either output).
+
+   A device whose scene slot only one real class could ever fill needs no separate device
+   twin registration either -- `matterix_catalog` in `lab.yml` already pins the concrete
+   class. Skip `matterix_devices.py`/`register_device_twin()` (option B's step 4) entirely
+   unless more than one physical implementation could occupy that same slot.
+
+### Option B: a scene decoupled from any one lab.yml
+
+For a scene not tied 1:1 to a single EOS lab (e.g. shared across labs, or authored before
+the EOS package exists), or anything `from_eos.py`'s scope doesn't cover yet:
 
 1. **Scene.** This decides the gym id and workflow key names you'll use in step 2. Two ways to make one:
 
-   - **YAML (recommended).** Write a scene spec, no Python needed. See `scene_specs/*.yaml` for examples, `schema/models.py` for the full schema, and `eos/user/beaker_lab` for a real package using this end to end.
+   - **YAML.** Write a scene spec, no Python needed. See `scene_specs/*.yaml` for examples and `schema/models.py` for the full schema.
 
      ```bash
      python -m schema.compile_scene <your_package>/scene_specs/my_scene.yaml \
@@ -80,6 +159,8 @@ You don't need to touch this repo. Your package just imports it.
    register_task_workflow("my_protocol", "my_task")  # workflow_key defaults to the task name -- pass it explicitly only if it differs
    ```
 
+Both options continue with:
+
 3. **Device driver.** In `<your_package>/devices/<type>/device.py`:
 
    ```python
@@ -95,7 +176,7 @@ You don't need to touch this repo. Your package just imports it.
                )
    ```
 
-4. **Register a device twin, only if your device fills a scene slot (a robot in `articulated_assets`, or a non-robot asset like a hot plate or beaker in `objects`) more than one physical implementation could occupy.** Most devices skip this. Goes in a `matterix_devices.py` at your package's root (a sibling of `pyproject.toml`, `labs/`, `devices/`, etc. -- not `scenes/__init__.py`: devices exist independently of any particular scene, and a scene's slots get filled by a device twin at workflow-run time, not the other way around). Bind your lab device directly to the real Matterix asset class:
+4. **Register a device twin, only if your device fills a scene slot (a robot in `articulated_assets`, or a non-robot asset like a hot plate or beaker in `objects`) more than one physical implementation could occupy.** Most devices skip this (and option A's `matterix_catalog` in `lab.yml` already covers the common case). Goes in a `matterix_devices.py` at your package's root (a sibling of `pyproject.toml`, `labs/`, `devices/`, etc. -- not `scenes/__init__.py`: devices exist independently of any particular scene, and a scene's slots get filled by a device twin at workflow-run time, not the other way around). Bind your lab device directly to the real Matterix asset class:
 
    ```python
    from matterix_assets.robots import FRANKA_PANDA_HIGH_PD_IK_CFG

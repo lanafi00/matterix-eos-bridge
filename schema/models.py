@@ -1,10 +1,17 @@
 """The scene schema itself: SceneSpec (top level) / AssetSpec / WorkflowStep /
-SemanticsSpec / BundleStep / PositionRandomization / TemperatureRandomization.
+SemanticsSpec / BundleStep / PositionRandomization / TemperatureRandomization /
+WorkflowBindingSpec.
 
 This is what a scene_specs/*.yaml file parses into, and what a drag-and-drop UI or an
 LLM's structured output should target (`SceneSpec.model_json_schema()` gives you the JSON
 Schema for that) -- see schema/__init__.py's docstring and CLAUDE.md for the full
 rationale.
+
+`WorkflowBindingSpec` is the other parse target: what a `matterix_workflow.yml` file
+(sibling of an EOS package's own `protocol.yml`) parses into -- see its own docstring and
+`schema/from_eos.py`, the alternate compiler entry point that builds a full `SceneSpec`
+directly from an EOS package's `lab.yml` + its protocols' `matterix_workflow.yml` files,
+instead of a hand-authored scene_specs/*.yaml.
 
 Scope (v3 -- see CLAUDE.md's rollout plan): covers what exp1_beaker_pick,
 exp3_heater_transfer, and exp4_dual_arm_handoff all need -- asset placement, position/
@@ -145,6 +152,46 @@ class BundleStep(BaseModel):
             raise ValueError("BundleStep must set exactly one of 'ref' or 'action', not both or neither")
         if self.ref is not None and self.params:
             raise ValueError("BundleStep with 'ref' set takes no 'params' -- it reuses the referenced step's own")
+        return self
+
+
+class WorkflowBindingSpec(BaseModel):
+    """What a `matterix_workflow.yml` file (sibling of a `protocol.yml`, see
+    `schema/from_eos.py`) parses into -- the one piece of a scene that can't be derived
+    from an EOS package's own lab.yml/protocol.yml: which Matterix action backs each EOS
+    task, and its static params. `agent_assets`/`object`/`target` inside `workflows`/
+    `bundles` values name asset slots directly by their lab.yml device/resource name (no
+    extra indirection through a task's own `devices:`/`resources:` role names) -- the
+    same convention scene_specs/*.yaml already uses.
+
+    Deliberately NOT cross-validated against a catalog here -- `from_eos.py` merges this
+    into a real `SceneSpec` (alongside assets built from lab.yml) and lets that model's
+    own `_validate_catalog`/`_validate_identifiers` catch everything that needs asset
+    slots or catalog.json to exist. Only checks this file can verify on its own: every
+    `task_workflows` value actually resolves to something declared here.
+    """
+
+    task_workflows: dict[str, str]
+    """EOS task name -> a key in `workflows` or `bundles` below. Mirrors
+    common/protocol_registry.py's `register_task_workflow()` -- `from_eos.py` generates
+    that call from this mapping instead of it being hand-written."""
+
+    workflows: dict[str, WorkflowStep] = Field(default_factory=dict)
+    bundles: dict[str, list[BundleStep]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_task_workflows(self) -> "WorkflowBindingSpec":
+        known = set(self.workflows) | set(self.bundles)
+        unknown = {key: value for key, value in self.task_workflows.items() if value not in known}
+        if unknown:
+            raise ValueError(
+                "\n  - "
+                + "\n  - ".join(
+                    f"task_workflows.{task!r}: {wf!r} isn't a declared workflows/bundles "
+                    f"key. Known: {sorted(known)}"
+                    for task, wf in unknown.items()
+                )
+            )
         return self
 
 
