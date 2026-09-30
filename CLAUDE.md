@@ -114,8 +114,10 @@ hand-writing `@configclass` Python — see the review discussion for the full ra
 (schema-validate before ever paying Isaac Sim's 1-2 min boot cost).
 
 Two ways to reach a `SceneSpec` (the pydantic model `compiler.py` actually renders, see
-`schema/models.py`): a hand-authored `scene_specs/*.yaml` (`compile_scene.py`, below), or
-— for an EOS package that wants zero bridge-owned scene YAML at all — `schema/from_eos.py`,
+`schema/models.py`): a hand-authored `scene_specs/*.yaml` (`compile_scene.py`, below --
+still fully supported, just with no example file checked into this repo anymore, see
+below), or — for an EOS package that wants zero bridge-owned scene YAML at all —
+`schema/from_eos.py`,
 which builds one directly from that package's own `labs/<lab>/lab.yml` (device/resource
 `meta` carries `matterix_catalog`/`pos`/`randomize_position`/etc.) plus each relevant
 protocol's `matterix_workflow.yml` (the one thing `lab.yml` can't express: which Matterix
@@ -128,8 +130,8 @@ validator touching it — there is none), so real-mode `eos start` never trips o
 `eos/user/beaker_lab` for this compiled end to end, and `schema/from_eos.py`'s own
 docstring for the exact file layout. Known gap: `lab.yml` has no scene-level settings slot
 (no top-level `meta` on `LabDef` itself), so a from_eos.py-generated scene always gets
-`SceneSpec`'s default `env_spacing`/`episode_length_s` — only `scene_specs/*.yaml` can
-override those today.
+`SceneSpec`'s default `env_spacing`/`episode_length_s` — only a hand-authored
+`scene_specs/*.yaml` can override those today.
 
 **`dump_catalog.py`** (repo root, run the same way as `smoke_test.py`) boots Isaac Sim
 once and dumps every asset/action/semantics class Matterix currently ships — name, and
@@ -149,7 +151,7 @@ it only reads `catalog.json`, so it validates and compiles in EOS's plain venv, 
 env or Isaac Sim boot needed:
 
 ```
-/home/lila/Documents/git/eos/.venv/bin/python3 -m schema.compile_scene scene_specs/beaker_pick.yaml
+/home/lila/Documents/git/eos/.venv/bin/python3 -m schema.compile_scene <pkg>/scene_specs/my_scene.yaml
 ```
 
 writes `scenes/<name>/<name>_env_cfg.py` + `__init__.py` — same shape and convention as a
@@ -160,24 +162,27 @@ hand-authored scene, auto-discovered with no further edits needed
 Scope covers what `exp1_beaker_pick`, `exp3_heater_transfer`, AND `exp4_dual_arm_handoff`
 all need (see `schema/models.py`'s docstring): asset placement, position/temperature
 randomization, plain and composite (bundled, ref-based) workflow steps, per-asset and
-global semantics, and multi-agent scenes (more than one articulated asset). All three
-round-tripped and live-verified against those examples (each compiled to `scenes/<name>/`,
-tested against Isaac Sim, then removed again -- a compiled scene is fully reproducible
-from its YAML in one command, so keeping the output checked in permanently would just be a
-duplicate of the exp*/ example it was round-tripped against; regenerate on demand instead):
-- `scene_specs/beaker_pick.yaml` (`pickup_beaker`: `success: true`).
-- `scene_specs/heater_transfer.yaml` (`turn_on_heater` and the full 14-step
-  `pickup_and_place` composite: both `success: true`, semantics engine visibly firing —
-  heat transfer, contact detection, ambient convection).
-- `scene_specs/dual_arm_handoff.yaml` (two robots, each workflow step's
-  `action_space_info` resolved from THAT step's own `agent_assets`, not one scene-wide
-  "primary" robot — see `compiler.py`'s `_resolve_step_kwargs()`). Boots and constructs
-  correctly, but running its `handoff` workflow hits the exact same pre-existing
+global semantics, and multi-agent scenes (more than one articulated asset). Historical
+record -- the three YAML fixtures this was verified against (`scene_specs/beaker_pick.yaml`/
+`heater_transfer.yaml`/`dual_arm_handoff.yaml`) were removed once `schema/from_eos.py` (see
+above) became the actively-tested path; this is what they proved, each round-tripped and
+live-verified (compiled to `scenes/<name>/`, tested against Isaac Sim, then removed again
+per the same "a compiled scene is fully reproducible from its YAML, don't keep a permanent
+duplicate of the exp*/ example it was round-tripped against" reasoning from_eos.py's own
+output follows):
+- `beaker_pick.yaml`, matching `exp1_beaker_pick`'s shape (`pickup_beaker`: `success: true`).
+- `heater_transfer.yaml`, matching `exp3_heater_transfer`'s shape (`turn_on_heater` and the
+  full 14-step `pickup_and_place` composite: both `success: true`, semantics engine visibly
+  firing — heat transfer, contact detection, ambient convection).
+- `dual_arm_handoff.yaml`, matching `exp4_dual_arm_handoff`'s shape (two robots, each
+  workflow step's `action_space_info` resolved from THAT step's own `agent_assets`, not one
+  scene-wide "primary" robot — see `compiler.py`'s `_resolve_step_kwargs()`). Booted and
+  constructed correctly, but running its `handoff` workflow hit the exact same pre-existing
   `ValueError: Invalid action shape, expected: 16, received: 8` as the hand-authored
   `exp4_dual_arm_handoff` (see "Known open gaps" below) — reproduced identically,
   confirming this is `matterix_sm`'s own multi-agent action-tensor-sizing limitation, not
-  something the compiler introduced. As complete a verification as this scene shape can
-  currently get.
+  something the compiler introduced. As complete a verification as this scene shape could
+  get at the time.
 
 Multi-agent support needed one schema tightening alongside the compiler change:
 `agent_assets` is now validated to actually name an *articulated* asset (previously any
@@ -219,8 +224,9 @@ rather than reproducing the confusing name.
 - Matterix's `PickObjectCfg`/`PlaceObjectCfg` report success based on the robot reaching a
   target end-effector pose, not on whether the object was actually grasped or placed — a
   workflow can report `success=True` with nothing physically achieved. Not yet addressed.
-- A two-robot scene (`exp4_dual_arm_handoff`, and the schema-compiled equivalent from
-  `scene_specs/dual_arm_handoff.yaml`) fails any workflow step at the very first action with
+- A two-robot scene (`exp4_dual_arm_handoff`, and -- at the time this was verified, since
+  removed -- the schema-compiled equivalent from `scene_specs/dual_arm_handoff.yaml`) fails
+  any workflow step at the very first action with
   `ValueError: Invalid action shape, expected: 16, received: 8` — VERIFIED against both
   the hand-authored file and its unmodified pre-refactor version (identical failure), so
   it's a real, pre-existing limitation, not something introduced by any change in this

@@ -125,7 +125,7 @@ the EOS package exists), or anything `from_eos.py`'s scope doesn't cover yet:
 
 1. **Scene.** This decides the gym id and workflow key names you'll use in step 2. Two ways to make one:
 
-   - **YAML.** Write a scene spec, no Python needed. See `scene_specs/*.yaml` for examples and `schema/models.py` for the full schema.
+   - **YAML.** Write a scene spec, no Python needed. See `schema/models.py` for the full schema (every field has its own docstring) -- no bundled example file ships in this repo (the ones that did were round-trip fixtures for the schema itself, removed once `eos/user/beaker_lab` moved to Option A; see CLAUDE.md).
 
      ```bash
      python -m schema.compile_scene <your_package>/scene_specs/my_scene.yaml \
