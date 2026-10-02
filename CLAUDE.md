@@ -224,13 +224,15 @@ rather than reproducing the confusing name.
 - Matterix's `PickObjectCfg`/`PlaceObjectCfg` report success based on the robot reaching a
   target end-effector pose, not on whether the object was actually grasped or placed — a
   workflow can report `success=True` with nothing physically achieved. Not yet addressed.
-- A two-robot scene (`exp4_dual_arm_handoff`, and -- at the time this was verified, since
-  removed -- the schema-compiled equivalent from `scene_specs/dual_arm_handoff.yaml`) fails
-  any workflow step at the very first action with
-  `ValueError: Invalid action shape, expected: 16, received: 8` — VERIFIED against both
-  the hand-authored file and its unmodified pre-refactor version (identical failure), so
-  it's a real, pre-existing limitation, not something introduced by any change in this
-  repo. `env.action_manager` sizes the action tensor for every articulated asset in the
+- A real `matterix_sm` limitation, not something fixable from this bridge: ANY two-robot
+  scene fails any workflow step at the very first action with `ValueError: Invalid action
+  shape, expected: 16, received: 8`. VERIFIED (at the time, against a hand-authored
+  `exp4_dual_arm_handoff` scene and its schema-compiled equivalent -- both since removed,
+  no longer live examples in this repo, see git history -- plus that hand-authored scene's
+  unmodified pre-refactor version, identical failure both ways), so it's a real,
+  pre-existing limitation, not something introduced by any change in this repo. Still
+  relevant to anything built via `from_eos.py`/`compile_scene.py` with 2+ `articulated`
+  assets. `env.action_manager` sizes the action tensor for every articulated asset in the
   scene combined (2 robots × 8 dims = 16), but `matterix_sm`'s `StateMachine.step()` only
   returns an action sized for the ONE robot the current step's `agent_assets` actually
   drives (8 dims) — `runtime.py`'s own None-action fallback (`env.action_manager.action`)

@@ -257,8 +257,8 @@ def run_matterix_workflow(
     run the workflow, and raise if it didn't succeed -- the one call a sim-mode device
     driver's method should make, instead of separately calling get_backend(),
     set_parameters(), run_workflow(), and checking result.success by hand. Every
-    sim-mode device wants this same sequence (see devices/heater/device.py's heat_to()
-    for the pattern this replaces); putting it here once means a new device.py is one
+    sim-mode device wants this same sequence (see eos/user/beaker_lab's devices/arm/
+    device.py for a real example); putting it here once means a new device.py is one
     call instead of five lines of Ray/actor boilerplate.
 
     scope_id: normally the calling task's protocol_run_name -- a device has no way to

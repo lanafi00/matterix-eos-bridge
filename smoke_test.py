@@ -104,10 +104,9 @@ try:
         resolve_matterix_call_by_task_name("pick_beaker")
         fail("expected ValueError for ambiguous task name 'pick_beaker', got none")
     except ValueError as e:
-        # "pick_beaker" is genuinely registered under beaker_pick_protocol,
-        # pick_and_place_protocol, AND heater_transfer_protocol with two different
-        # results -- confirm the error actually names the collision, not just that
-        # *a* ValueError happened.
+        # "pick_beaker" is genuinely registered under both beaker_pick_protocol AND
+        # heater_transfer_protocol with two different results -- confirm the error
+        # actually names the collision, not just that *a* ValueError happened.
         msg = str(e)
         assert "beaker_pick_protocol" in msg and "heater_transfer_protocol" in msg, (
             f"ValueError didn't name the colliding protocols: {msg}"
