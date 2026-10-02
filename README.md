@@ -11,12 +11,14 @@ Broad level overview of how matterix_bridge interacts with EOS:
 4. The bridge translates the EOS device identifiers (task name, device) into Matterix device identifiers (gym task id, workflow key, twin config) and runs the simulation.
 5. Isaac Sim/Matterix executes the corresponding robot/physics/thermal workflow and returns a result (e.g. a temperature), which flows back into the EOS resource.
 
-Example workflow, as included in this package:
+Example workflow (illustrative -- this package itself ships only the Matterix side of
+this; see `eos/user/beaker_lab` for a complete, runnable EOS-side package following this
+exact pattern end to end):
 
-1. `protocols/heater_transfer_protocol/protocol.yml` defines task turn_on_heater on the heater device, with a target temperature.
-2. `tasks/turn_on_heater/task.py` runs, calls `devices["heater"].heat_to(...)`.
-3. `devices/heater/device.py` sees `backend == "sim"` (set in `labs/heater_transfer_lab/lab.yml`), so it calls `run_matterix_workflow()` (`common/matterix_backend.py`) with the target temperature as a dynamic parameter -- which gets/creates the shared MatterixBackend Ray actor for this protocol run (so all tasks in a protocol share the same physics environment), pushes the parameter, and runs the workflow.
-4. `run_matterix_workflow()` resolves `"turn_on_heater"` via `common/protocol_registry.py`'s `resolve_matterix_call_by_task_name()` into a Matterix gym task id + workflow key ("Matterix-Experiment-Heater-Transfer-Franka-v1", "turn_on_heater") -- from the task name alone, no protocol type needed, since that task name is only ever registered under one protocol.
+1. Your EOS package's `protocol.yml` defines task `turn_on_heater` on the heater device, with a target temperature.
+2. Your package's `tasks/turn_on_heater/task.py` runs, calls `devices["heater"].heat_to(...)`.
+3. Your package's `devices/heater/device.py` sees `backend == "sim"` (set in your `lab.yml`), so it calls `run_matterix_workflow()` (`common/matterix_backend.py`) with the target temperature as a dynamic parameter -- which gets/creates the shared MatterixBackend Ray actor for this protocol run (so all tasks in a protocol share the same physics environment), pushes the parameter, and runs the workflow.
+4. `run_matterix_workflow()` resolves `"turn_on_heater"` via `common/protocol_registry.py`'s `resolve_matterix_call_by_task_name()` into a Matterix gym task id + workflow key ("Matterix-Experiment-Heater-Transfer-Franka-v1", "turn_on_heater") -- from the task name alone, no protocol type needed, since that task name is only ever registered under one protocol. This repo's own `matterix_registrations.py` registers that exact binding (against `heater_transfer_protocol`) for use by `smoke_test.py`/`vnc_test.py`, which exercise this same path directly without going through EOS at all.
 5. `common/runtime.py` boots Isaac Sim (once), builds/reuses the gym environment defined in `scenes/exp3_heater_transfer/`, and runs that one workflow (a TurnOnHeaterCfg semantic action) to completion.
 6. The result (e.g. sample temperature) flows back up through the actor to the device driver to the task, and is stored on the EOS Resource.
 

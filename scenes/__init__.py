@@ -7,17 +7,18 @@ of them -- see common/runtime.py's `_discover_scene_modules()`, which imports th
 package (and any other EOS package's own `scenes` subpackage) automatically, AND walks
 every scene subpackage found under it -- a new scene doesn't need to be added to the
 imports below to be picked up (compiling one via schema/compile_scene.py, or copying an
-exp*/ example, is enough on its own); exp1-4 stay explicit here only because
+exp*/ example, is enough on its own); exp1/exp3 stay explicit here only because
 dump_catalog.py's own warm-up import (`import user.matterix_bridge.scenes`) needs AT
 LEAST ONE scene submodule imported as a side effect to trigger matterix_assets' circular-
 import fix, independent of `_discover_scene_modules()`'s own walk.
 
-Scenes, in increasing order of complexity:
+Scenes, in increasing order of complexity -- genuinely exercised by smoke_test.py/
+vnc_test.py (exp2_pick_and_place and exp4_dual_arm_handoff existed here too, as
+schema-scope examples never actually booted by any test, exp4 additionally a known-broken
+`matterix_sm` multi-agent limitation -- see CLAUDE.md's "Known open gaps"; removed):
 
     exp1_beaker_pick      - single Franka arm picks up a beaker (the "hello world" of Matterix).
-    exp2_pick_and_place   - single Franka arm picks a beaker and places it on an IKA plate.
     exp3_heater_transfer  - adds the semantics engine: turn on a heater, observe heat transfer.
-    exp4_dual_arm_handoff - two Franka arms hand a beaker to each other via a shared station.
 
 (schema/compile_scene.py -- see CLAUDE.md's "Declarative scene schema" section -- can
 compile a hand-authored scene_specs/*.yaml into this same directory; none are checked in
@@ -40,14 +41,10 @@ by this file importing one.
 
 from . import (
     exp1_beaker_pick,
-    exp2_pick_and_place,
     exp3_heater_transfer,
-    exp4_dual_arm_handoff,
 )
 
 __all__ = [
     "exp1_beaker_pick",
-    "exp2_pick_and_place",
     "exp3_heater_transfer",
-    "exp4_dual_arm_handoff",
 ]
