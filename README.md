@@ -115,8 +115,9 @@ this end to end, and `schema/from_eos.py`'s own docstring / `schema/models.py`'s
 
    A device whose scene slot only one real class could ever fill needs no separate device
    twin registration either -- `matterix_catalog` in `lab.yml` already pins the concrete
-   class. Skip `matterix_devices.py`/`register_device_twin()` (option B's step 4) entirely
-   unless more than one physical implementation could occupy that same slot.
+   class. Skip `matterix_devices.py`/`register_device_twin()` (the "Register a device
+   twin" step below) entirely unless more than one physical implementation could occupy
+   that same slot.
 
 ### Option B: a scene decoupled from any one lab.yml
 
@@ -125,7 +126,21 @@ the EOS package exists), or anything `from_eos.py`'s scope doesn't cover yet:
 
 1. **Scene.** This decides the gym id and workflow key names you'll use in step 2. Two ways to make one:
 
-   - **YAML.** Write a scene spec, no Python needed. See `schema/models.py` for the full schema (every field has its own docstring) -- no bundled example file ships in this repo (the ones that did were round-trip fixtures for the schema itself, removed once `eos/user/beaker_lab` moved to Option A; see CLAUDE.md).
+   - **YAML.** Write a scene spec, no Python needed -- `gym_id` is a required top-level field, same job as the Python path's `id=` kwarg below:
+
+     ```yaml
+     name: my_scene
+     gym_id: Matterix-Experiment-My-Scene-v1
+     assets:
+       my_arm: {kind: articulated, catalog: robots/franka_panda_high_pd_ik}
+       beaker_1: {kind: object, catalog: labware/beaker_500ml_inst}
+     workflows:
+       my_workflow:
+         action: pick_object
+         params: {agent_assets: my_arm, object: beaker_1}  # see schema/models.py for every field
+     ```
+
+     See `schema/models.py` for the full schema (every field has its own docstring) -- no bundled example file ships in this repo (the ones that did were round-trip fixtures for the schema itself, removed once `eos/user/beaker_lab` moved to Option A; see CLAUDE.md).
 
      ```bash
      python -m schema.compile_scene <your_package>/scene_specs/my_scene.yaml \
@@ -159,9 +174,9 @@ the EOS package exists), or anything `from_eos.py`'s scope doesn't cover yet:
    register_task_workflow("my_protocol", "my_task")  # workflow_key defaults to the task name -- pass it explicitly only if it differs
    ```
 
-Both options continue with:
+### Both options continue with
 
-3. **Device driver.** In `<your_package>/devices/<type>/device.py`:
+**Device driver.** In `<your_package>/devices/<type>/device.py`:
 
    ```python
    from eos.devices.base_device import BaseDevice
@@ -176,7 +191,7 @@ Both options continue with:
                )
    ```
 
-4. **Register a device twin, only if your device fills a scene slot (a robot in `articulated_assets`, or a non-robot asset like a hot plate or beaker in `objects`) more than one physical implementation could occupy.** Most devices skip this (and option A's `matterix_catalog` in `lab.yml` already covers the common case). Goes in a `matterix_devices.py` at your package's root (a sibling of `pyproject.toml`, `labs/`, `devices/`, etc. -- not `scenes/__init__.py`: devices exist independently of any particular scene, and a scene's slots get filled by a device twin at workflow-run time, not the other way around). Bind your lab device directly to the real Matterix asset class:
+**Register a device twin, only if your device fills a scene slot (a robot in `articulated_assets`, or a non-robot asset like a hot plate or beaker in `objects`) more than one physical implementation could occupy.** Most devices skip this (and Option A's `matterix_catalog` in `lab.yml` already covers the common case). Goes in a `matterix_devices.py` at your package's root (a sibling of `pyproject.toml`, `labs/`, `devices/`, etc. -- not `scenes/__init__.py`: devices exist independently of any particular scene, and a scene's slots get filled by a device twin at workflow-run time, not the other way around). Bind your lab device directly to the real Matterix asset class:
 
    ```python
    from matterix_assets.robots import FRANKA_PANDA_HIGH_PD_IK_CFG
