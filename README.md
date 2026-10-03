@@ -3,24 +3,21 @@
 This package is designed to integrate Matterix digital twin generation into the Experimental Orchestration Framework, allowing for the virtual commissioning of laboratory protocols before they are deployed on hardware. 
 
 ## Overview
-Broad level overview of how matterix_bridge interacts with EOS: 
+Example workflow (`eos/user/beaker_lab`, a complete, runnable EOS package following this pattern end to end):
 
-1. An EOS protocol runs a task (e.g. "turn on heater").
-2. The task calls a device driver (e.g. Heater.heat_to(...)).
-3. If that device is configured in the EOS with `backend: sim` in `<your_package>/labs/<lab_name>/lab.yml`, the driver reaches into this bridge instead of real hardware.
-4. The bridge translates the EOS device identifiers (task name, device) into Matterix device identifiers (gym task id, workflow key, twin config) and runs the simulation.
-5. Isaac Sim/Matterix executes the corresponding robot/physics/thermal workflow and returns a result (e.g. a temperature), which flows back into the EOS resource.
+**Once, at authoring time:**
 
-Example workflow (illustrative -- this package itself ships only the Matterix side of
-this; see `eos/user/beaker_lab` for a complete, runnable EOS-side package following this
-exact pattern end to end):
+1. `labs/beaker_lab/lab.yml` declares the lab as usual, plus sim-only `meta` on each device/resource: the `arm` device is `robots/franka_panda_high_pd_ik`, `beaker_1` is `labware/beaker_500ml_inst` at `[0.6, 0.05, 0.05]` with randomized x/y, and `table_1` is `infrastructure/table_seattle_inst`. EOS never validates `meta`, so the same file still works for real runs.
+2. Each protocol that should have a sim twin gets a `matterix_workflow.yml` next to its `protocol.yml`, saying which Matterix action backs each EOS task: `pick_beaker` → `pick_object` (agent `arm`, object `beaker_1`) and `place_beaker` → `place_object` (target `table_1`). A protocol without this file just has no sim twin.
+3. `python -m schema.from_eos <eos>/user/beaker_lab` validates both against `catalog.json` (no Isaac Sim needed) and writes `scenes/beaker_lab/` (gym id `Matterix-Lab-BeakerLab-v1`, one scene per lab) plus `matterix_registrations.py`, binding each protocol's tasks to that scene's workflows.
 
-1. Your EOS package's `protocol.yml` defines task `turn_on_heater` on the heater device, with a target temperature.
-2. Your package's `tasks/turn_on_heater/task.py` runs, calls `devices["heater"].heat_to(...)`.
-3. Your package's `devices/heater/device.py` sees `backend == "sim"` (set in your `lab.yml`), so it calls `run_matterix_workflow()` (`common/matterix_backend.py`) with the target temperature as a dynamic parameter -- which gets/creates the shared MatterixBackend Ray actor for this protocol run (so all tasks in a protocol share the same physics environment), pushes the parameter, and runs the workflow.
-4. `run_matterix_workflow()` resolves `"turn_on_heater"` via `common/protocol_registry.py`'s `resolve_matterix_call_by_task_name()` into a Matterix gym task id + workflow key ("Matterix-Experiment-Heater-Transfer-Franka-v1", "turn_on_heater") -- from the task name alone, no protocol type needed, since that task name is only ever registered under one protocol. This repo's own `matterix_registrations.py` registers that exact binding (against `heater_transfer_protocol`) for use by `smoke_test.py`/`vnc_test.py`, which exercise this same path directly without going through EOS at all.
-5. `common/runtime.py` boots Isaac Sim (once), builds/reuses the gym environment defined in `scenes/exp3_heater_transfer/`, and runs that one workflow (a TurnOnHeaterCfg semantic action) to completion.
-6. The result (e.g. sample temperature) flows back up through the actor to the device driver to the task, and is stored on the EOS Resource.
+**Every protocol run:**
+
+4. `beaker_lab_pick_and_place_protocol` runs task `pick_beaker` with `backend: sim`. Its `task.py` calls `devices["arm"].pick_beaker(beaker, protocol_run_name, task_name, backend=...)`.
+5. `devices/arm/device.py` sees `backend == "sim"` and calls `run_matterix_workflow()` (`common/matterix_backend.py`). That gets or creates the shared `MatterixBackend` Ray actor for this protocol run, so every task in the run shares one physics scene and Isaac Sim boots only once.
+6. The bridge resolves `pick_beaker` via `common/protocol_registry.py` to (`Matterix-Lab-BeakerLab-v1`, `pickup_beaker`).
+7. `common/runtime.py` boots Isaac Sim on the first call, builds the `beaker_lab` scene, and runs the pick workflow to completion. `place_beaker` then runs in the same scene.
+8. A `WorkflowResult` (success, per-env success, failure detail) comes back to the driver. `run_matterix_workflow()` raises if the workflow failed; otherwise the driver updates the EOS resource (here `beaker.meta["picked"]`) exactly as its real-hardware path would.
 
 ## Installing this into an EOS deployment
 
