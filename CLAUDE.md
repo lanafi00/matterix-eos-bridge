@@ -98,7 +98,13 @@ should print `PASS`; a `FAIL` or an uncaught traceback means something regressed
   rebuilding only if/when a real name-based lookup consumer exists (e.g. a layout/scene
   loader).
 - `common/runtime.py` — the actual Isaac Sim boot and environment lifecycle
-  (`ensure_app_launched()`, `_get_env()`, `run_workflow()`).
+  (`ensure_app_launched()`, `_get_env()`, `run_workflow()`). `run_workflow(reset=False)`
+  (what `MatterixBackend` always uses) never resets: the scene is reset only when
+  `_get_env()` builds it, and each call starts from the saved `_current_obs`. The
+  time-out is off for those calls, and any automatic reset mid-workflow raises
+  RuntimeError (and blocks further `reset=False` calls on that scene) instead of
+  silently restarting. `reset=True` (the default; smoke/VNC tests) keeps the old
+  reset-every-episode behavior.
 - `common/matterix_backend.py` — the Ray actor (`MatterixBackend`) wrapping `runtime.py`
   so Isaac Sim's boot cost is paid once per `scope_id`, not once per call. Device drivers
   should call `run_matterix_workflow()` (the one-call helper) rather than
