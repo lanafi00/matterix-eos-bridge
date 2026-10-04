@@ -35,10 +35,20 @@ import ray
 from user.matterix_bridge.common.runtime import _eos_path
 
 # How long a MatterixBackend actor can go without a real call before get_backend()'s
-# idle sweep (see _kill_idle_actors below) considers it abandoned and kills it. Well
-# above any single workflow's expected runtime -- this is about reclaiming actors from
-# *finished* runs, not interrupting an active one.
+# idle sweep (see _kill_idle_actors below) considers it abandoned and kills it, when
+# get_backend() is attaching to an EXISTING scope's actor. Creating a NEW scope's actor
+# doesn't wait for this -- it kills every other backend actor that's idle right now (see
+# get_backend()), since only one Isaac Sim can use this machine's GPU at a time anyway.
 _IDLE_TIMEOUT_S = 15 * 60
+
+# How long get_backend() waits for a newly created actor to be scheduled (i.e. granted its
+# num_gpus claim) before giving up with a RuntimeError naming whoever holds the GPU,
+# instead of handing back an actor whose every call would hang in PENDING_CREATION.
+_GPU_WAIT_S = 30.0
+
+# How long the sweep waits on another actor's idle_seconds() before calling it busy.
+# MatterixBackend is a plain synchronous actor, so one mid-workflow can't answer at all.
+_BUSY_PROBE_S = 5.0
 
 
 def _resolve(lab: str, eos_task_name: str) -> tuple[str, str]:
@@ -57,8 +67,9 @@ class MatterixBackend:
         self._last_activity = time.monotonic()
 
     def idle_seconds(self) -> float:
-        """Seconds since the last set_parameter()/run_workflow() call. Used by
-        get_backend()'s idle sweep to decide whether this actor has been abandoned."""
+        """Seconds since the last set_parameter()/run_workflow() call finished. Used by
+        get_backend()'s idle sweep. Never answers while a call is running (this is a
+        synchronous actor) -- the sweep treats that as busy."""
         return time.monotonic() - self._last_activity
 
     def set_parameter(self, lab: str, eos_task_name: str, field: str, value: Any) -> None:
@@ -118,49 +129,129 @@ class MatterixBackend:
         # starts with the beaker still in the gripper from pick_beaker) instead of a fresh
         # reset that would silently undo every earlier task. The env is reset once, when
         # first built for this scope.
-        return run_workflow(
-            task=task,
-            workflow=workflow,
-            devices=devices,
-            workflow_overrides=overrides,
-            reset=False,
-            **run_workflow_kwargs,
-        )
+        try:
+            return run_workflow(
+                task=task,
+                workflow=workflow,
+                devices=devices,
+                workflow_overrides=overrides,
+                reset=False,
+                **run_workflow_kwargs,
+            )
+        finally:
+            # Idle time counts from when the work ENDED, not when it started -- otherwise
+            # an actor that just finished a 2-minute workflow already looks 2 minutes idle.
+            self._last_activity = time.monotonic()
 
 
-def _kill_idle_actors(exclude_name: str) -> None:
-    """Kill every other `matterix_backend.*` actor that's been idle past _IDLE_TIMEOUT_S.
+def _other_backends(exclude_name: str) -> list[tuple[str, Any, float | None]]:
+    """`(name, handle, idle_seconds)` for every other `matterix_backend.*` actor in this Ray
+    cluster, across all namespaces (a detached actor started from a different driver
+    script lives in that script's namespace, not ours). `idle_seconds` is None when the
+    actor didn't answer within _BUSY_PROBE_S -- i.e. it's busy mid-call (or wedged).
 
-    Called from get_backend() on every invocation, not on a separate timer -- piggybacked
-    on the one moment this actually matters: right before a NEW actor might need a GPU.
-    `MatterixBackend` stays a plain synchronous actor (no asyncio/threading conversion)
-    because Isaac Sim/PhysX/CUDA state inside it isn't safe to touch from a second thread
-    -- a real background timer would need that conversion; this sweep doesn't.
-
-    Best-effort: any failure here (an actor mid-shutdown, a transient RPC error, a
-    genuinely busy actor we don't want to wait on) is swallowed so a sweep problem never
-    blocks the real get_backend() call that triggered it.
+    Best-effort: an actor that can't be looked up at all (mid-shutdown, transient RPC
+    error) is just left out.
     """
     try:
         from ray.util import list_named_actors
 
-        names = [n for n in list_named_actors() if n.startswith("matterix_backend.") and n != exclude_name]
+        entries = [
+            e
+            for e in list_named_actors(all_namespaces=True)
+            if e["name"].startswith("matterix_backend.") and e["name"] != exclude_name
+        ]
     except Exception:
-        return
+        return []
 
-    for name in names:
+    found = []
+    for entry in entries:
         try:
-            handle = ray.get_actor(name)
-            # Short timeout: an actor mid-workflow is busy, not idle -- don't wait on it,
-            # just skip it this sweep (it'll be checked again next time get_backend() runs).
-            idle_for = ray.get(handle.idle_seconds.remote(), timeout=5)
-            if idle_for > _IDLE_TIMEOUT_S:
-                ray.kill(handle)
+            handle = ray.get_actor(entry["name"], namespace=entry["namespace"])
         except Exception:
             continue
+        try:
+            idle_for = ray.get(handle.idle_seconds.remote(), timeout=_BUSY_PROBE_S)
+        except Exception:
+            idle_for = None
+        found.append((entry["name"], handle, idle_for))
+    return found
 
 
-def get_backend(scope_id: str, conda_env: str | None = None, num_gpus: int = 1):
+def _kill_idle_actors(exclude_name: str, min_idle_s: float) -> None:
+    """Kill every other `matterix_backend.*` actor that's been idle at least `min_idle_s`
+    (0 = idle right now, i.e. not mid-call). A busy actor is never killed.
+
+    Called from get_backend() rather than a background timer: `MatterixBackend` stays a
+    plain synchronous actor (no asyncio/threading conversion) because Isaac Sim/PhysX/CUDA
+    state inside it isn't safe to touch from a second thread -- a real timer would need
+    that conversion; this sweep doesn't. Best-effort: a failed kill is swallowed so it
+    never blocks the get_backend() call that triggered it (if that leaves the GPU held,
+    get_backend()'s GPU wait reports it).
+    """
+    for _, handle, idle_for in _other_backends(exclude_name):
+        if idle_for is not None and idle_for >= min_idle_s:
+            try:
+                ray.kill(handle)
+            except Exception:
+                pass
+
+
+def _wait_for_gpu(handle: Any, name: str, gpu_wait_s: float) -> None:
+    """Block until the just-created actor `handle` is scheduled -- its __init__ is trivial,
+    so the first answer to idle_seconds() means Ray granted its num_gpus claim. Raise
+    RuntimeError after `gpu_wait_s` instead, naming every other backend actor (busy, or
+    idle and for how long), and kill the still-pending actor so it can't silently grab
+    the GPU later and linger as an orphaned detached actor.
+    """
+    try:
+        ray.get(handle.idle_seconds.remote(), timeout=gpu_wait_s)
+        return
+    except ray.exceptions.GetTimeoutError:
+        pass
+
+    # No answer can also mean the actor IS scheduled but busy: another caller in the same
+    # run created it first (get_if_exists handed us theirs) and it's mid-workflow. Ray's
+    # GCS actor table tells the two apart without needing the dashboard (VERIFIED: a busy
+    # actor reads ALIVE, a GPU-starved one PENDING_CREATION) -- private API, hence the
+    # try: if it ever breaks, fall through to the pending-actor path below.
+    try:
+        from ray._private import state as ray_state
+
+        if ray_state.actors(actor_id=handle._actor_id.hex())["State"] == "ALIVE":
+            return
+    except Exception:
+        pass
+
+    holders = _other_backends(exclude_name=name)
+    try:
+        ray.kill(handle)
+    except Exception:
+        pass
+
+    if holders:
+        detail = "; ".join(
+            f"{other!r} is busy (didn't answer within {_BUSY_PROBE_S:.0f}s -- likely mid-workflow)"
+            if idle_for is None
+            else f"{other!r} has been idle {idle_for:.0f}s but is still alive (killing it failed?)"
+            for other, _, idle_for in holders
+        )
+        who = f"Other MatterixBackend actors: {detail}."
+    else:
+        who = (
+            "No other MatterixBackend actor exists in this Ray cluster, so something else "
+            "holds the GPU resource -- check `ray list actors --filter state=ALIVE`."
+        )
+    raise RuntimeError(
+        f"{name!r} couldn't get a GPU within {gpu_wait_s:.0f}s (only one Isaac Sim can run "
+        f"on this machine at a time). {who} Busy actors are never killed automatically -- "
+        "wait for that run to finish, or `ray.kill()` its actor if it's stuck."
+    )
+
+
+def get_backend(
+    scope_id: str, conda_env: str | None = None, num_gpus: int = 1, gpu_wait_s: float = _GPU_WAIT_S
+):
     """Get-or-create the one backend actor for this run/campaign.
 
     First call for a given scope_id creates the actor (and, on its first run_workflow
@@ -190,11 +281,21 @@ def get_backend(scope_id: str, conda_env: str | None = None, num_gpus: int = 1):
 
     Actors are `lifetime="detached"`, one per `scope_id`, so on a single-GPU machine a
     finished (or failed) run's actor would otherwise permanently hold the only
-    `num_gpus=1` claim. Fixed via an idle timeout, not a "run finished" signal (EOS gives
-    devices no such signal) -- every call here first runs `_kill_idle_actors()`, which
-    kills any OTHER `matterix_backend.*` actor idle past `_IDLE_TIMEOUT_S`. Piggybacked on
-    the call path rather than a real background timer, since that would need converting
-    this actor to async/threaded, unsafe for the Isaac Sim/PhysX/CUDA state it holds.
+    `num_gpus=1` claim -- EOS gives devices no "run finished" signal to release it on.
+    So when this call is about to CREATE a new scope's actor (a new run starting), it
+    first kills every OTHER `matterix_backend.*` actor that's idle right now -- only one
+    Isaac Sim can use the GPU anyway. A busy actor (mid-call, so it can't answer within
+    `_BUSY_PROBE_S`) is left alone. Attaching to an existing scope's actor only sweeps
+    actors idle past `_IDLE_TIMEOUT_S`.
+
+    Trade-off of "idle right now": a run that's merely between two of its tasks is idle
+    too, so starting a second run concurrently kills the first one's actor (and its
+    scene state); the first run's next task then fails or starts a fresh scene. On one
+    GPU those two runs couldn't both proceed anyway.
+
+    After creating a new actor (with `num_gpus > 0`), waits up to `gpu_wait_s` for Ray
+    to schedule it. If the GPU is still held (e.g. by a busy actor), raises RuntimeError
+    naming that actor instead of returning one whose calls would hang forever.
 
     TODO / known gaps:
     - Better long-term fix for the conda_env relocation problem above: run a separate
@@ -203,7 +304,16 @@ def get_backend(scope_id: str, conda_env: str | None = None, num_gpus: int = 1):
       {"conda": ...}` -- keeps `eos start` on EOS's plain documented venv. Blocked on
       EOS's `ray.init()` using an embedded, not externally-joinable, cluster.
     """
-    _kill_idle_actors(exclude_name=f"matterix_backend.{scope_id}")
+    name = f"matterix_backend.{scope_id}"
+    try:
+        existing = ray.get_actor(name)
+    except ValueError:
+        existing = None
+    if existing is not None:
+        _kill_idle_actors(exclude_name=name, min_idle_s=_IDLE_TIMEOUT_S)
+        return existing
+
+    _kill_idle_actors(exclude_name=name, min_idle_s=0.0)
 
     runtime_env: dict[str, Any] = {}
     if conda_env is None:
@@ -230,13 +340,16 @@ def get_backend(scope_id: str, conda_env: str | None = None, num_gpus: int = 1):
         env_vars["DISPLAY"] = os.environ["DISPLAY"]
     runtime_env["env_vars"] = env_vars
 
-    return MatterixBackend.options(
-        name=f"matterix_backend.{scope_id}",
-        get_if_exists=True,
+    handle = MatterixBackend.options(
+        name=name,
+        get_if_exists=True,  # another caller may have created it since the lookup above
         lifetime="detached",
         num_gpus=num_gpus,
         runtime_env=runtime_env,
     ).remote()
+    if num_gpus > 0:
+        _wait_for_gpu(handle, name, gpu_wait_s)
+    return handle
 
 
 def run_matterix_workflow(

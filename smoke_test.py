@@ -385,4 +385,46 @@ except Exception as e:
     fail("in-process task-switch guard test failed", e)
 
 
+# --- Stage 11: get_backend()'s GPU handoff. A NEW scope's actor kills other backend
+# actors that are idle right now (here: Stage 8-9's smoke_test_scope, which really holds
+# an Isaac Sim) and gets the GPU; a busy one is left alone and the new run raises a clear
+# RuntimeError within gpu_wait_s instead of hanging in PENDING_CREATION.
+stage("Stage 11: get_backend() frees the GPU from idle actors, fails fast on a busy one")
+try:
+    import time
+
+    from ray.util import list_named_actors
+
+    from user.matterix_bridge.common.matterix_backend import get_backend
+
+    def _backends():
+        return sorted(
+            e["name"] for e in list_named_actors(all_namespaces=True) if e["name"].startswith("matterix_backend.")
+        )
+
+    handoff = get_backend("smoke_test_scope_2")
+    ray.get(handoff.idle_seconds.remote(), timeout=10)
+    time.sleep(1)
+    assert _backends() == ["matterix_backend.smoke_test_scope_2"], f"expected only scope_2 alive, got {_backends()}"
+    ok("new scope killed idle smoke_test_scope (Isaac Sim actor) and got the GPU")
+
+    # Busy without booting Isaac Sim: occupy the actor's single execution thread.
+    busy_ref = handoff.__ray_call__.remote(lambda self: time.sleep(40))
+    time.sleep(1)
+    started = time.monotonic()
+    try:
+        get_backend("smoke_test_scope_3", gpu_wait_s=5)
+        fail("expected RuntimeError while smoke_test_scope_2 is busy, got none")
+    except RuntimeError as e:
+        assert "smoke_test_scope_2" in str(e) and "busy" in str(e), f"error didn't name the busy holder: {e}"
+        ok(f"RuntimeError naming busy smoke_test_scope_2 after {time.monotonic() - started:.0f}s instead of hanging")
+    time.sleep(1)
+    assert _backends() == ["matterix_backend.smoke_test_scope_2"], f"busy actor killed or pending one left: {_backends()}"
+    ok("busy actor left alone, the GPU-starved pending actor cleaned up")
+    ray.get(busy_ref)
+    ray.kill(handoff)
+except Exception as e:
+    fail("get_backend() GPU handoff failed", e)
+
+
 print(f"\n{'=' * 70}\nALL STAGES PASSED\n{'=' * 70}")
