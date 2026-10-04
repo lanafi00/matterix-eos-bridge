@@ -232,9 +232,15 @@ rather than reproducing the confusing name.
 - `get_backend()`'s conda-env relocation is a working stopgap, not the intended fix — the
   real fix (a separately joinable Ray worker node reporting a custom GPU resource) is
   blocked on EOS's own `ray.init()` not being externally joinable.
-- Detached `MatterixBackend` actors on this single-GPU machine are reclaimed by a 15-minute
-  idle timeout, not a real "run finished" signal (EOS gives devices no such signal) —
-  mitigated, not solved.
+- Detached `MatterixBackend` actors aren't released by a real "run finished" signal (EOS
+  gives devices none). Instead, `get_backend()` creating a NEW scope's actor kills every
+  other backend actor that's idle right now (a busy one — mid-call, can't answer within 5s
+  — is left alone), and if the new actor still can't get the GPU within `gpu_wait_s`
+  (30s default) it raises a RuntimeError naming the holder instead of hanging in
+  PENDING_CREATION. Cost of "idle right now": starting a second run kills the first one's
+  actor even if it's only between tasks. Only sees actors in the same Ray cluster — an
+  Isaac Sim started outside Ray (or in a different `ray.init()` cluster, e.g. a
+  standalone smoke_test.py while `eos start` is up) still contends for the GPU unseen.
 - Matterix's `PickObjectCfg`/`PlaceObjectCfg` report success based on the robot reaching a
   target end-effector pose, not on whether the object was actually grasped or placed — a
   workflow can report `success=True` with nothing physically achieved. Not yet addressed.
