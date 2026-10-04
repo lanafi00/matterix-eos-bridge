@@ -494,7 +494,7 @@ def compile_scene(spec: SceneSpec, *, regen_hint: str | None = None) -> tuple[st
 
     `regen_hint` is the "how to regenerate this file" text in the generated header --
     the compiler itself doesn't know or care which of compile_scene.py's
-    scene_specs/*.yaml or from_eos.py's lab.yml/matterix_workflow.yml built `spec`, so
+    scene_specs/*.yaml or from_eos.py's lab.yml/protocol.yml built `spec`, so
     the caller says how to reproduce it. Defaults to compile_scene.py's own
     scene_specs/*.yaml command (this function's only caller before from_eos.py existed),
     so existing callers that don't pass this keep getting identical output.

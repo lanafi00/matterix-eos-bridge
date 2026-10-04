@@ -24,7 +24,7 @@ code instead of editing this file directly. Concretely: those calls live at modu
 in a file named `matterix_registrations.py` at your package's root (a sibling of its
 `pyproject.toml`, `labs/`, `devices/`, etc.) -- normally generated for you by
 `python -m schema.from_eos <your package>` from its `labs/*/lab.yml` and
-`protocols/*/matterix_workflow.yml`, never hand-written. `_discover_registrations()`
+`protocols/*/protocol.yml` tasks' `matterix:` blocks, never hand-written. `_discover_registrations()`
 below imports every loaded EOS package's `matterix_registrations.py` automatically, the
 first time anything resolves through this registry in this process, so you never call
 the register functions yourself by hand -- you only need the file to exist.
@@ -236,8 +236,8 @@ def resolve_matterix_call_by_lab(lab_name: str, eos_task_name: str) -> tuple[str
     key = (lab_name, eos_task_name)
     if key not in LAB_TASK_WORKFLOWS:
         raise KeyError(
-            f"No Matterix workflow registered for EOS task {key!r}. Add it to a "
-            "matterix_workflow.yml's task_workflows for a protocol in this lab and "
+            f"No Matterix workflow registered for EOS task {key!r}. Add a "
+            "`matterix:` block to that task in a protocol.yml for this lab and "
             "regenerate (or call register_lab_task_workflow() for it)."
         )
     return LAB_TWINS[lab_name], LAB_TASK_WORKFLOWS[key]

@@ -8,14 +8,14 @@ Example workflow (`eos/user/beaker_lab`, a complete, runnable EOS package follow
 **Once, at authoring time:**
 
 1. `labs/beaker_lab/lab.yml` declares the lab as usual, plus sim-only `meta` on each device/resource: the `arm` device is `robots/franka_panda_high_pd_ik`, `beaker_1` is `labware/beaker_500ml_inst` at `[0.6, 0.05, 0.05]` with randomized x/y, and `table_1` is `infrastructure/table_seattle_inst`. EOS never validates `meta`, so the same file still works for real runs.
-2. Each protocol that should have a sim twin gets a `matterix_workflow.yml` next to its `protocol.yml`, saying which Matterix action backs each EOS task: `pick_beaker` → `pick_object` (agent `arm`, object `beaker_1`) and `place_beaker` → `place_object` (target `table_1`). A protocol without this file just has no sim twin.
-3. `python -m schema.from_eos <eos>/user/beaker_lab` validates both against `catalog.json` (no Isaac Sim needed) and writes `scenes/beaker_lab/` (gym id `Matterix-Lab-BeakerLab-v1`, one scene per lab) plus `matterix_registrations.py`, binding the lab to that scene and each of its tasks (merged across every protocol with a `matterix_workflow.yml` in that lab) to a workflow.
+2. Each task in `protocol.yml` that should have a sim twin gets a `matterix:` key saying which Matterix action backs it: `pick_beaker` → `pick_object` (agent `arm`, object `beaker_1`) and `place_beaker` → `place_object` (target `table_1`). A task without one just has no sim twin. EOS ignores the key (its task model drops unknown keys).
+3. `python -m schema.from_eos <eos>/user/beaker_lab` validates both against `catalog.json` (no Isaac Sim needed) and writes `scenes/beaker_lab/` (gym id `Matterix-Lab-BeakerLab-v1`, one scene per lab) plus `matterix_registrations.py`, binding the lab to that scene and each of its tasks (merged across every protocol in that lab) to the workflow of the same name.
 
 **Every protocol run:**
 
 4. `beaker_lab_pick_and_place_protocol` runs task `pick_beaker` with `backend: sim`. Its `task.py` calls `devices["arm"].pick_beaker(beaker, protocol_run_name, task_name, backend=...)`.
 5. `devices/arm/device.py` sees `backend == "sim"` and calls `run_matterix_workflow(..., lab=self.lab_name)` (`common/matterix_backend.py`). That gets or creates the shared `MatterixBackend` Ray actor for this protocol run, so every task in the run shares one physics scene and Isaac Sim boots only once.
-6. The bridge resolves (`beaker_lab`, `pick_beaker`) via `common/protocol_registry.py` to (`Matterix-Lab-BeakerLab-v1`, `pickup_beaker`). Keyed by the device's own lab, so the calling protocol never needs to be known or hardcoded.
+6. The bridge resolves (`beaker_lab`, `pick_beaker`) via `common/protocol_registry.py` to (`Matterix-Lab-BeakerLab-v1`, `pick_beaker`). Keyed by the device's own lab, so the calling protocol never needs to be known or hardcoded.
 7. `common/runtime.py` boots Isaac Sim on the first call, builds the `beaker_lab` scene, and runs the pick workflow to completion. `place_beaker` then runs in the same scene.
 8. A `WorkflowResult` (success, per-env success, failure detail) comes back to the driver. `run_matterix_workflow()` raises if the workflow failed; otherwise the driver updates the EOS resource (here `beaker.meta["picked"]`) exactly as its real-hardware path would.
 
@@ -49,7 +49,7 @@ You don't need to touch this repo. Your package just imports it. Two ways to get
 No scene-authoring file of any kind -- positions and catalog keys live in `lab.yml`
 itself, which you're writing anyway. See `eos/user/beaker_lab` for a real package using
 this end to end, and `schema/from_eos.py`'s own docstring / `schema/models.py`'s
-`WorkflowBindingSpec` for the full schema this reads.
+`WorkflowStep` (what each task's `matterix:` key parses as) for the full schema this reads.
 
 1. **Positions and catalog keys go on your devices/resources' `meta` dict in
    `<your_package>/labs/<lab_name>/lab.yml`** -- `meta` is EOS's own unvalidated metadata
@@ -84,21 +84,26 @@ this end to end, and `schema/from_eos.py`'s own docstring / `schema/models.py`'s
    appears in any `protocol.yml` task's `resources:` block.
 
 2. **The one thing that can't come from `lab.yml`: which Matterix action backs each EOS
-   task.** Declare it in `<your_package>/protocols/<protocol_type>/matterix_workflow.yml`
-   (a sibling of that protocol's own `protocol.yml`) -- `agent_assets`/`object`/`target`
-   name assets directly by their `lab.yml` device/resource name:
+   task.** Declare it as a `matterix:` key on that task in
+   `<your_package>/protocols/<protocol_type>/protocol.yml` -- `agent_assets`/`object`/
+   `target` name assets directly by their `lab.yml` device/resource name, and the task's
+   own name becomes its Matterix workflow key:
 
    ```yaml
-   task_workflows:
-     my_task: my_workflow
-
-   workflows:
-     my_workflow:
-       action: pick_object
-       params:
-         agent_assets: my_arm
-         object: beaker_1
+   tasks:
+     - name: my_task
+       type: My Task
+       # ...devices/resources/parameters as usual...
+       matterix:
+         action: pick_object
+         params:
+           agent_assets: my_arm
+           object: beaker_1
    ```
+
+   `matterix:` isn't an EOS field: it works because EOS's `TaskDef` silently ignores
+   unknown keys (`from_eos.py` reads it from the raw YAML for the same reason). If two
+   protocols in one lab share a task name, their `matterix:` blocks must match.
 
 3. **Generate the scene + `matterix_registrations.py` together:**
 
@@ -107,7 +112,7 @@ this end to end, and `schema/from_eos.py`'s own docstring / `schema/models.py`'s
    ```
 
    Run from this repo's root. No conda env or Isaac Sim boot needed -- reads your
-   `lab.yml`/`matterix_workflow.yml`, validates against `catalog.json`, writes
+   `lab.yml`/`protocol.yml` files, validates against `catalog.json`, writes
    `<your_package>/scenes/<lab_name>/` AND `<your_package>/matterix_registrations.py` for
    you (regenerate both by rerunning this after editing either file -- don't hand-edit
    either output).
