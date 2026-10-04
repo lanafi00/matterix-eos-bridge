@@ -14,7 +14,7 @@ Example workflow (`eos/user/beaker_lab`, a complete, runnable EOS package follow
 **Every protocol run:**
 
 4. `beaker_lab_pick_and_place_protocol` runs task `pick_beaker` with `backend: sim`. Its `task.py` calls `devices["arm"].pick_beaker(beaker, protocol_run_name, task_name, backend=...)`.
-5. `devices/arm/device.py` sees `backend == "sim"` and calls `run_matterix_workflow(..., lab=self.lab_name)` (`common/matterix_backend.py`). That gets or creates the shared `MatterixBackend` Ray actor for this protocol run, so every task in the run shares one physics scene and Isaac Sim boots only once.
+5. `devices/arm/device.py` handles `backend == "sim"` by calling `run_matterix_workflow(..., lab=self.lab_name)` (`common/matterix_backend.py`) instead of its real-hardware code -- a branch the `@sim_twin` decorator (`common/sim_twin.py`, see "Device driver" below) supplies for you rather than having it hand-written. That gets or creates the shared `MatterixBackend` Ray actor for this protocol run, so every task in the run shares one physics scene and Isaac Sim boots only once.
 6. The bridge resolves (`beaker_lab`, `pick_beaker`) via `common/protocol_registry.py` to (`Matterix-Lab-BeakerLab-v1`, `pick_beaker`). Keyed by the device's own lab, so the calling protocol never needs to be known or hardcoded.
 7. `common/runtime.py` boots Isaac Sim on the first call, builds the `beaker_lab` scene, and runs the pick workflow to completion. `place_beaker` then runs in the same scene.
 8. A `WorkflowResult` (success, per-env success, failure detail) comes back to the driver. `run_matterix_workflow()` raises if the workflow failed; otherwise the driver updates the EOS resource (here `beaker.meta["picked"]`) exactly as its real-hardware path would.
@@ -180,20 +180,20 @@ the EOS package exists), or anything `from_eos.py`'s scope doesn't cover yet:
 
 ### Both options continue with
 
-**Device driver.** In `<your_package>/devices/<type>/device.py`:
+**Device driver.** In `<your_package>/devices/<type>/device.py`, decorate each method that has a sim twin with `@sim_twin`. The method body is the real-hardware path only; on a call with `backend="sim"` the decorator skips the body and runs the matching Matterix workflow instead (resolved by `self.lab_name` + the task name):
 
    ```python
    from eos.devices.base_device import BaseDevice
-   from user.matterix_bridge.common.matterix_backend import run_matterix_workflow
+   from user.matterix_bridge.common.sim_twin import sim_twin
 
    class DeviceName(BaseDevice):
-       def device_action(self, sample, target_value, protocol_run_name, eos_task_name, headless=True):
-           if self._backend_mode == "sim":
-               run_matterix_workflow(
-                   protocol_run_name, eos_task_name, lab=self.lab_name,
-                   headless=headless, target_value=target_value,
-               )
+       @sim_twin(returns="sample", fields=("target_temperature",))
+       def device_action(self, sample, target_temperature, protocol_run_name, eos_task_name, backend="sim", headless=True):
+           ...  # real hardware only
+           return sample
    ```
+
+   The method must take `protocol_run_name`, `eos_task_name` (pass `self._protocol_run_name` / `self._task_name` from your task) and `backend` (`"sim"` or `"real"`; anything else raises). `returns` names the argument to hand back on a sim call; `fields` names arguments forwarded to the workflow as dynamic overrides, and must match the workflow config's own field names. Bookkeeping that should happen in both modes (e.g. updating a resource's `meta`) goes in the task, not the decorated body. See `common/sim_twin.py`'s docstring for the rest.
 
 **Register a device twin, only if your device fills a scene slot (a robot in `articulated_assets`, or a non-robot asset like a hot plate or beaker in `objects`) more than one physical implementation could occupy.** Most devices skip this (and Option A's `matterix_catalog` in `lab.yml` already covers the common case). Goes in a `matterix_devices.py` at your package's root (a sibling of `pyproject.toml`, `labs/`, `devices/`, etc. -- not `scenes/__init__.py`: devices exist independently of any particular scene, and a scene's slots get filled by a device twin at workflow-run time, not the other way around). Bind your lab device directly to the real Matterix asset class:
 

@@ -103,6 +103,11 @@ should print `PASS`; a `FAIL` or an uncaught traceback means something regressed
   so Isaac Sim's boot cost is paid once per `scope_id`, not once per call. Device drivers
   should call `run_matterix_workflow()` (the one-call helper) rather than
   `get_backend()`/`set_parameters()`/`run_workflow()` individually.
+- `common/sim_twin.py` — `@sim_twin`, the device-method decorator that wraps
+  `run_matterix_workflow()`: the method body is the real-hardware path, and a call with
+  `backend="sim"` skips it and runs the Matterix workflow instead. Prefer it over a
+  hand-written `if backend == "sim":` branch in device.py. Imports the Ray-backed helper
+  lazily, so decorating a device class needs neither ray nor Isaac Sim.
 - `scenes/` — Gym environment definitions only (`gym.register()`), never device/catalog
   registration.
 - A scene has exactly two asset containers (`matterix_base_env_cfg.py`):

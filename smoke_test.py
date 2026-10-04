@@ -379,4 +379,46 @@ except Exception as e:
     fail("in-process task-switch guard test failed", e)
 
 
+# --- Stage 11: @sim_twin, the device-method decorator wrapping run_matterix_workflow().
+# A stand-in device class (EOS's BaseDevice isn't needed -- the decorator only reads
+# self.lab_name) exercised the way beaker_lab's arm would be: backend="sim" must skip the
+# real-hardware body and run the workflow through the real Ray actor; backend="real" must
+# run the body and never touch the actor; anything else must raise before either.
+# Reuses Stage 9's "smoke_test_scope" for the same one-GPU reason documented there.
+stage("Stage 11: @sim_twin routes sim calls to Matterix and real calls to the method body")
+try:
+    from user.matterix_bridge.common.sim_twin import sim_twin
+
+    class _SmokeArm:
+        lab_name = "beaker_lab"
+
+        def __init__(self):
+            self.hardware_calls = 0
+
+        @sim_twin(returns="beaker")
+        def pick_beaker(self, beaker, protocol_run_name, eos_task_name, backend="sim", headless=True):
+            self.hardware_calls += 1
+            return beaker
+
+    arm, beaker = _SmokeArm(), object()
+
+    returned = arm.pick_beaker(beaker, "smoke_test_scope", "pick_beaker", backend="sim", headless=True)
+    assert returned is beaker, f"sim call returned {returned!r}, expected the beaker argument back"
+    assert arm.hardware_calls == 0, "sim call ran the real-hardware body"
+    ok("backend='sim' ran the Matterix workflow (lab=beaker_lab) and skipped the hardware body")
+
+    assert arm.pick_beaker(beaker, "smoke_test_scope", "pick_beaker", backend="real") is beaker
+    assert arm.hardware_calls == 1, "real call didn't run the hardware body exactly once"
+    ok("backend='real' ran the hardware body")
+
+    try:
+        arm.pick_beaker(beaker, "smoke_test_scope", "pick_beaker", backend="Sim")
+        fail("expected ValueError for backend='Sim', got none")
+    except ValueError:
+        assert arm.hardware_calls == 1, "invalid backend still ran the hardware body"
+        ok("ValueError correctly raised for an invalid backend, before anything ran")
+except Exception as e:
+    fail("@sim_twin test failed", e)
+
+
 print(f"\n{'=' * 70}\nALL STAGES PASSED\n{'=' * 70}")
