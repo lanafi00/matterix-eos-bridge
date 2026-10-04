@@ -173,8 +173,9 @@ class WorkflowBindingSpec(BaseModel):
 
     task_workflows: dict[str, str]
     """EOS task name -> a key in `workflows` or `bundles` below. Mirrors
-    common/protocol_registry.py's `register_task_workflow()` -- `from_eos.py` generates
-    that call from this mapping instead of it being hand-written."""
+    common/protocol_registry.py's `register_lab_task_workflow()` -- `from_eos.py` generates
+    that call (keyed by the protocol's lab) from this mapping instead of it being
+    hand-written."""
 
     workflows: dict[str, WorkflowStep] = Field(default_factory=dict)
     bundles: dict[str, list[BundleStep]] = Field(default_factory=dict)

@@ -9,13 +9,13 @@ Example workflow (`eos/user/beaker_lab`, a complete, runnable EOS package follow
 
 1. `labs/beaker_lab/lab.yml` declares the lab as usual, plus sim-only `meta` on each device/resource: the `arm` device is `robots/franka_panda_high_pd_ik`, `beaker_1` is `labware/beaker_500ml_inst` at `[0.6, 0.05, 0.05]` with randomized x/y, and `table_1` is `infrastructure/table_seattle_inst`. EOS never validates `meta`, so the same file still works for real runs.
 2. Each protocol that should have a sim twin gets a `matterix_workflow.yml` next to its `protocol.yml`, saying which Matterix action backs each EOS task: `pick_beaker` → `pick_object` (agent `arm`, object `beaker_1`) and `place_beaker` → `place_object` (target `table_1`). A protocol without this file just has no sim twin.
-3. `python -m schema.from_eos <eos>/user/beaker_lab` validates both against `catalog.json` (no Isaac Sim needed) and writes `scenes/beaker_lab/` (gym id `Matterix-Lab-BeakerLab-v1`, one scene per lab) plus `matterix_registrations.py`, binding each protocol's tasks to that scene's workflows.
+3. `python -m schema.from_eos <eos>/user/beaker_lab` validates both against `catalog.json` (no Isaac Sim needed) and writes `scenes/beaker_lab/` (gym id `Matterix-Lab-BeakerLab-v1`, one scene per lab) plus `matterix_registrations.py`, binding the lab to that scene and each of its tasks (merged across every protocol with a `matterix_workflow.yml` in that lab) to a workflow.
 
 **Every protocol run:**
 
 4. `beaker_lab_pick_and_place_protocol` runs task `pick_beaker` with `backend: sim`. Its `task.py` calls `devices["arm"].pick_beaker(beaker, protocol_run_name, task_name, backend=...)`.
-5. `devices/arm/device.py` sees `backend == "sim"` and calls `run_matterix_workflow()` (`common/matterix_backend.py`). That gets or creates the shared `MatterixBackend` Ray actor for this protocol run, so every task in the run shares one physics scene and Isaac Sim boots only once.
-6. The bridge resolves `pick_beaker` via `common/protocol_registry.py` to (`Matterix-Lab-BeakerLab-v1`, `pickup_beaker`).
+5. `devices/arm/device.py` sees `backend == "sim"` and calls `run_matterix_workflow(..., lab=self.lab_name)` (`common/matterix_backend.py`). That gets or creates the shared `MatterixBackend` Ray actor for this protocol run, so every task in the run shares one physics scene and Isaac Sim boots only once.
+6. The bridge resolves (`beaker_lab`, `pick_beaker`) via `common/protocol_registry.py` to (`Matterix-Lab-BeakerLab-v1`, `pickup_beaker`). Keyed by the device's own lab, so the calling protocol never needs to be known or hardcoded.
 7. `common/runtime.py` boots Isaac Sim on the first call, builds the `beaker_lab` scene, and runs the pick workflow to completion. `place_beaker` then runs in the same scene.
 8. A `WorkflowResult` (success, per-env success, failure detail) comes back to the driver. `run_matterix_workflow()` raises if the workflow failed; otherwise the driver updates the EOS resource (here `beaker.meta["picked"]`) exactly as its real-hardware path would.
 
@@ -164,13 +164,13 @@ the EOS package exists), or anything `from_eos.py`'s scope doesn't cover yet:
 
    Nothing else to wire up -- your package's `scenes/__init__.py` doesn't need to list this scene. `_discover_scene_modules()` finds every scene subpackage on its own; the YAML path even creates `scenes/__init__.py` for you if this is your package's first scene.
 
-2. **Register the protocol/task -> Matterix bindings**, in `<your_package>/matterix_registrations.py` (plain strings only), using the gym id and workflow keys from step 1:
+2. **Register the lab/task -> Matterix bindings**, in `<your_package>/matterix_registrations.py` (plain strings only), using the gym id and workflow keys from step 1:
 
    ```python
-   from user.matterix_bridge.common.protocol_registry import register_protocol, register_task_workflow
+   from user.matterix_bridge.common.protocol_registry import register_lab, register_lab_task_workflow
 
-   register_protocol("my_protocol", "Matterix-Experiment-My-Scene-v1")
-   register_task_workflow("my_protocol", "my_task")  # workflow_key defaults to the task name -- pass it explicitly only if it differs
+   register_lab("my_lab", "Matterix-Experiment-My-Scene-v1")
+   register_lab_task_workflow("my_lab", "my_task")  # workflow_key defaults to the task name -- pass it explicitly only if it differs
    ```
 
 ### Both options continue with
@@ -185,7 +185,7 @@ the EOS package exists), or anything `from_eos.py`'s scope doesn't cover yet:
        def device_action(self, sample, target_value, protocol_run_name, eos_task_name, headless=True):
            if self._backend_mode == "sim":
                run_matterix_workflow(
-                   protocol_run_name, eos_task_name,
+                   protocol_run_name, eos_task_name, lab=self.lab_name,
                    headless=headless, target_value=target_value,
                )
    ```

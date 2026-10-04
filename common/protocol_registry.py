@@ -1,27 +1,38 @@
-"""Maps EOS protocol/task identities to the Matterix task/workflow that validates them.
+"""Maps EOS lab/task (or protocol/task) identities to the Matterix task/workflow that
+validates them.
 
-Two registries, mirroring `device_registry.py`'s pattern:
+Two pairs of registries, mirroring `device_registry.py`'s pattern:
 
-- `PROTOCOL_TWINS` - EOS protocol type -> Matterix gym task id. Picks which scene
-  "shape" (objects, observations, workflow definitions) backs a given protocol.
-- `TASK_WORKFLOWS` - (EOS protocol type, EOS task name) -> Matterix workflow key.
-  Picks which single `env_cfg.workflows` entry backs one EOS DAG task node.
+- Lab-keyed (what a device driver actually resolves through -- see
+  `run_matterix_workflow()`'s `lab=`):
+  - `LAB_TWINS` - EOS lab name -> Matterix gym task id. `schema/from_eos.py` compiles
+    exactly one scene per lab, so the lab already determines which scene backs a call.
+  - `LAB_TASK_WORKFLOWS` - (EOS lab name, EOS task name) -> Matterix workflow key.
+- Protocol-keyed (the older API, kept working -- `smoke_test.py` still exercises it):
+  - `PROTOCOL_TWINS` - EOS protocol type -> Matterix gym task id.
+  - `TASK_WORKFLOWS` - (EOS protocol type, EOS task name) -> Matterix workflow key.
 
-Populated via `register_protocol()`/`register_task_workflow()` rather than edited as
-literal dict entries, so a package other than this one (e.g. your own EOS package
-declaring its own protocol) can register its bindings from its own code instead of
-editing this file directly. Concretely: put those calls at module level in a file named
-`matterix_registrations.py` at your package's root (a sibling of its `pyproject.toml`,
-`labs/`, `devices/`, etc. -- see this repo's own `matterix_registrations.py` for the
-exact pattern). `_discover_registrations()` below imports every loaded EOS package's
-`matterix_registrations.py` automatically, the first time `resolve_matterix_call()` is
-called in this process, so you never call `register_protocol()` yourself by hand --
-you only need the file to exist with those calls in it.
+Lab-keyed is the one to use: a device always knows its own lab (`BaseDevice.lab_name`),
+whereas `BaseTask` never exposes the calling protocol's type, so protocol-keyed lookups
+meant hardcoding a protocol type into device code (or resolving by task name alone and
+hoping no other package registered the same task name).
+
+Populated via `register_lab()`/`register_lab_task_workflow()` (or `register_protocol()`/
+`register_task_workflow()`) rather than edited as literal dict entries, so a package
+other than this one (e.g. your own EOS package) can register its bindings from its own
+code instead of editing this file directly. Concretely: those calls live at module level
+in a file named `matterix_registrations.py` at your package's root (a sibling of its
+`pyproject.toml`, `labs/`, `devices/`, etc.) -- normally generated for you by
+`python -m schema.from_eos <your package>` from its `labs/*/lab.yml` and
+`protocols/*/matterix_workflow.yml`, never hand-written. `_discover_registrations()`
+below imports every loaded EOS package's `matterix_registrations.py` automatically, the
+first time anything resolves through this registry in this process, so you never call
+the register functions yourself by hand -- you only need the file to exist.
 
 Keep `matterix_registrations.py` import-safe without isaaclab/matterix_assets
-installed or Isaac Sim running -- only reference plain strings here (protocol types,
-gym task ids, task/workflow names), never a twin config class. That's because
-protocol/task resolution can happen before Isaac Sim boots (e.g. inside
+installed or Isaac Sim running -- only reference plain strings here (lab names,
+protocol types, gym task ids, task/workflow names), never a twin config class. That's
+because lab/task resolution can happen before Isaac Sim boots (e.g. inside
 `MatterixBackend.set_parameter()`, which never touches runtime.py at all), so this
 discovery is deliberately separate from -- and runs earlier than -- runtime.py's
 `_discover_device_registrations()`/`_discover_scene_modules()`, which import each
@@ -32,8 +43,8 @@ booted). Device twins, which DO need isaaclab-dependent classes, are registered 
 
 These are explicit mappings rather than a naming convention (e.g. "assume the EOS task
 name always matches the Matterix workflow key") on purpose: a rename on either side -
-an EOS protocol definition or one of this repo's `workflows` dicts - should fail loudly
-via `resolve_matterix_call()`'s KeyError, not silently resolve to the wrong workflow.
+an EOS lab/protocol definition or a scene's `workflows` dict - should fail loudly via a
+resolve function's KeyError, not silently resolve to the wrong workflow.
 
 Each Matterix `workflows` dict has one atomic entry per EOS DAG task node (what an
 EOS-facing caller dispatches one at a time), plus - where useful for manual/dev CLI
@@ -44,13 +55,50 @@ entries are meant to be reached through this registry.
 from __future__ import annotations
 
 # Populated lazily -- reading these directly before anything has triggered
-# _discover_registrations() (see resolve_matterix_call() below) shows an empty dict with
-# no hint why. Use get_protocol_twins()/get_task_workflows() instead if you just want to
-# inspect what's registered.
+# _discover_registrations() (see resolve_matterix_call_by_lab() below) shows an empty dict
+# with no hint why. Use get_lab_twins()/get_lab_task_workflows() (or get_protocol_twins()/
+# get_task_workflows()) instead if you just want to inspect what's registered.
+LAB_TWINS: dict[str, str] = {}
+LAB_TASK_WORKFLOWS: dict[tuple[str, str], str] = {}
 PROTOCOL_TWINS: dict[str, str] = {}
 TASK_WORKFLOWS: dict[tuple[str, str], str] = {}
 
 _registrations_discovered = False
+
+
+def register_lab(lab_name: str, gym_task_id: str, *, overwrite: bool = False) -> None:
+    """Bind an EOS lab to the Matterix gym task id (scene) compiled from its lab.yml.
+
+    Same conflict semantics as `register_protocol()`: re-registering the same pair is a
+    no-op, a *different* gym task id raises ValueError unless `overwrite` is set.
+    """
+    existing = LAB_TWINS.get(lab_name)
+    if existing is not None and existing != gym_task_id and not overwrite:
+        raise ValueError(
+            f"Lab {lab_name!r} is already registered to gym task {existing!r} (tried to "
+            f"register {gym_task_id!r}). Pass overwrite=True if this is intentional."
+        )
+    LAB_TWINS[lab_name] = gym_task_id
+
+
+def register_lab_task_workflow(
+    lab_name: str, eos_task_name: str, workflow_key: str | None = None, *, overwrite: bool = False
+) -> None:
+    """Bind an EOS task, as run in `lab_name`, to the Matterix workflow key that executes
+    it. workflow_key defaults to eos_task_name -- see `register_task_workflow()` for why
+    that's an opt-in convenience, not a naming-convention fallback. Same conflict
+    semantics as `register_lab()`.
+    """
+    if workflow_key is None:
+        workflow_key = eos_task_name
+    key = (lab_name, eos_task_name)
+    existing = LAB_TASK_WORKFLOWS.get(key)
+    if existing is not None and existing != workflow_key and not overwrite:
+        raise ValueError(
+            f"Task {key!r} is already registered to workflow {existing!r} (tried to "
+            f"register {workflow_key!r}). Pass overwrite=True if this is intentional."
+        )
+    LAB_TASK_WORKFLOWS[key] = workflow_key
 
 
 def register_protocol(protocol_type: str, gym_task_id: str, *, overwrite: bool = False) -> None:
@@ -77,8 +125,7 @@ def register_task_workflow(
     """Bind one EOS DAG task node to the Matterix workflow key that executes it.
 
     workflow_key defaults to eos_task_name when omitted -- the common case (this repo's
-    own matterix_registrations.py needs it explicit for only 1 of its 9 registrations;
-    the rest use the same name on both sides). This is a convenience default the caller
+    Matterix workflow key is usually the same string as the EOS task name). This is a convenience default the caller
     opts into by leaving the argument out, not a silent naming-convention fallback: the
     module docstring's "why explicit mappings" reasoning still holds -- if you never call
     register_task_workflow() for a given task at all, resolve_matterix_call() still
@@ -131,6 +178,23 @@ def _discover_registrations() -> None:
             importlib.import_module(f"user.{package_dir.name}.matterix_registrations")
 
 
+def get_lab_twins() -> dict[str, str]:
+    """The current `LAB_TWINS` mapping, forcing registration discovery first -- see
+    `get_protocol_twins()`'s docstring for why this exists instead of reading
+    `LAB_TWINS` directly. Returns the live dict, not a copy -- treat it as read-only.
+    """
+    _discover_registrations()
+    return LAB_TWINS
+
+
+def get_lab_task_workflows() -> dict[tuple[str, str], str]:
+    """The current `LAB_TASK_WORKFLOWS` mapping, forcing registration discovery first --
+    see `get_protocol_twins()`'s docstring. Returns the live dict -- treat it as read-only.
+    """
+    _discover_registrations()
+    return LAB_TASK_WORKFLOWS
+
+
 def get_protocol_twins() -> dict[str, str]:
     """The current `PROTOCOL_TWINS` mapping, forcing registration discovery first.
 
@@ -153,6 +217,32 @@ def get_task_workflows() -> dict[tuple[str, str], str]:
     return TASK_WORKFLOWS
 
 
+def resolve_matterix_call_by_lab(lab_name: str, eos_task_name: str) -> tuple[str, str]:
+    """Resolve an EOS `(lab_name, task_name)` pair to a Matterix `(task, workflow)` pair --
+    what `run_matterix_workflow(lab=...)` uses. A device driver passes its own
+    `self.lab_name`, so there's nothing to hardcode and nothing ambiguous: two packages
+    (or two protocols) reusing the same task name don't collide unless they also share
+    a lab, and `schema/from_eos.py` refuses to generate that case inconsistently.
+
+    Raises KeyError naming the offending side rather than silently mismatching.
+    """
+    _discover_registrations()
+    if lab_name not in LAB_TWINS:
+        raise KeyError(
+            f"No Matterix scene registered for EOS lab {lab_name!r}. Generate its "
+            "matterix_registrations.py with `python -m schema.from_eos <package>` (or call "
+            "register_lab() for it -- see matterix_bridge/common/protocol_registry.py)."
+        )
+    key = (lab_name, eos_task_name)
+    if key not in LAB_TASK_WORKFLOWS:
+        raise KeyError(
+            f"No Matterix workflow registered for EOS task {key!r}. Add it to a "
+            "matterix_workflow.yml's task_workflows for a protocol in this lab and "
+            "regenerate (or call register_lab_task_workflow() for it)."
+        )
+    return LAB_TWINS[lab_name], LAB_TASK_WORKFLOWS[key]
+
+
 def resolve_matterix_call(protocol_type: str, eos_task_name: str) -> tuple[str, str]:
     """Resolve an EOS `(protocol_type, task_name)` pair to a Matterix `(task, workflow)` pair.
 
@@ -160,13 +250,7 @@ def resolve_matterix_call(protocol_type: str, eos_task_name: str) -> tuple[str, 
     rename on either side of the EOS/Matterix boundary is caught immediately instead of
     resolving to the wrong (or a stale) workflow.
 
-    Most callers don't actually need to supply `protocol_type` -- see
-    `resolve_matterix_call_by_task_name()`, which resolves from `eos_task_name` alone
-    whenever that's unambiguous (the common case) and only requires disambiguation when
-    it genuinely isn't. Use this function directly only when you already know
-    `protocol_type` and want the registry to double-check it (e.g. inside
-    `MatterixBackend`, which already has it because `run_matterix_workflow()`'s caller
-    supplied it).
+    Device drivers should resolve by lab instead -- see `resolve_matterix_call_by_lab()`.
     """
     _discover_registrations()
     if protocol_type not in PROTOCOL_TWINS:

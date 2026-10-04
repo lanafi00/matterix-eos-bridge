@@ -3,7 +3,7 @@ protocol run (or campaign). Every sim-mode device driver gets or creates this SA
 via get_backend(scope_id) -- Isaac Sim boots once per scope_id, not once per device, and
 every device acts on the one shared scene instead of a private, disconnected copy of it.
 
-EOS protocol/task -> Matterix task/workflow resolution lives in protocol_registry.py;
+EOS lab/task -> Matterix task/workflow resolution lives in protocol_registry.py;
 EOS device -> Matterix twin resolution lives in device_registry.py (consumed internally by
 run_workflow()'s `devices=` param). This actor is just a persistent process wrapping
 run_workflow() (a sibling module, runtime.py) so Isaac Sim's boot cost is paid once per
@@ -41,23 +41,13 @@ from user.matterix_bridge.common.runtime import _eos_path
 _IDLE_TIMEOUT_S = 15 * 60
 
 
-def _resolve(protocol_type: str | None, eos_task_name: str) -> tuple[str, str]:
-    """Resolve an EOS task to its Matterix (gym_task_id, workflow_key) pair -- by task
-    name alone when `protocol_type` is None (the common case: most EOS task names are
-    unique across every registered protocol, so there's nothing to disambiguate), or
-    explicitly when it's given. See `protocol_registry.py`'s
-    `resolve_matterix_call_by_task_name()`/`resolve_matterix_call()` docstrings for why
-    `protocol_type` historically had to be threaded through by hand (BaseTask doesn't
-    expose it) and when you'd still need to pass a real one here.
+def _resolve(lab: str, eos_task_name: str) -> tuple[str, str]:
+    """Resolve an EOS task, as run in `lab`, to its Matterix (gym_task_id, workflow_key)
+    pair -- see `protocol_registry.py`'s `resolve_matterix_call_by_lab()`.
     """
-    if protocol_type is None:
-        from user.matterix_bridge.common.protocol_registry import resolve_matterix_call_by_task_name
+    from user.matterix_bridge.common.protocol_registry import resolve_matterix_call_by_lab
 
-        return resolve_matterix_call_by_task_name(eos_task_name)
-
-    from user.matterix_bridge.common.protocol_registry import resolve_matterix_call
-
-    return resolve_matterix_call(protocol_type, eos_task_name)
+    return resolve_matterix_call_by_lab(lab, eos_task_name)
 
 
 @ray.remote
@@ -71,9 +61,7 @@ class MatterixBackend:
         get_backend()'s idle sweep to decide whether this actor has been abandoned."""
         return time.monotonic() - self._last_activity
 
-    def set_parameter(
-        self, protocol_type: str | None, eos_task_name: str, field: str, value: Any
-    ) -> None:
+    def set_parameter(self, lab: str, eos_task_name: str, field: str, value: Any) -> None:
         """Update a single workflow config field -- see `set_parameters()` for the real
         implementation and the effective-timing semantics (same here, just one field at a
         time). Kept for callers that only ever have one field to set (e.g. smoke_test.py);
@@ -81,36 +69,30 @@ class MatterixBackend:
         (or the `run_matterix_workflow()` helper below, which calls it for you) instead of
         making one remote round-trip per field.
         """
-        self.set_parameters(protocol_type, eos_task_name, {field: value})
+        self.set_parameters(lab, eos_task_name, {field: value})
 
-    def set_parameters(self, protocol_type: str | None, eos_task_name: str, fields: dict[str, Any]) -> None:
+    def set_parameters(self, lab: str, eos_task_name: str, fields: dict[str, Any]) -> None:
         """Update multiple workflow config fields in one call, effective on this scope's
-        next run_workflow() call for that (protocol_type, eos_task_name) -- including
-        mid-run. One remote round-trip regardless of how many fields are in `fields`,
-        unlike calling `set_parameter()` once per field.
-
-        protocol_type: pass None (the common case) to resolve from eos_task_name alone --
-        see `_resolve()` below.
+        next run_workflow() call for that (lab, eos_task_name) -- including mid-run. One
+        remote round-trip regardless of how many fields are in `fields`, unlike calling
+        `set_parameter()` once per field.
         """
         self._last_activity = time.monotonic()
-        _, workflow = _resolve(protocol_type, eos_task_name)
+        _, workflow = _resolve(lab, eos_task_name)
         self._params.setdefault(workflow, {}).update(fields)
 
     def run_workflow(
         self,
-        protocol_type: str | None,
+        lab: str,
         eos_task_name: str,
         devices: dict[str, tuple[str, str]] | None = None,
         **run_workflow_kwargs: Any,
     ) -> Any:
-        """Resolve an EOS (protocol_type, eos_task_name) pair to a Matterix (task, workflow)
+        """Resolve an EOS (lab, eos_task_name) pair to a Matterix (task, workflow)
         pair and run it, applying any overrides registered via set_parameter for this
         workflow. `devices` (an EOS `{slot: (lab_name, device_name)}` mapping) and
         `run_workflow_kwargs` (num_envs, max_episodes, record_video, ... -- see
         runtime.run_workflow's real signature) pass straight through.
-
-        protocol_type: pass None (the common case) to resolve from eos_task_name alone --
-        see `_resolve()` below.
 
         Every call against this SAME actor (i.e. every DAG task in one protocol run,
         sharing one scope_id) must resolve to the same `task`/`num_envs`/`devices` -- see
@@ -126,7 +108,7 @@ class MatterixBackend:
         # env -- keep this actor (and its callers) importable without it.
         from user.matterix_bridge.common.runtime import run_workflow
 
-        task, workflow = _resolve(protocol_type, eos_task_name)
+        task, workflow = _resolve(lab, eos_task_name)
         overrides = self._params.get(workflow)
         return run_workflow(
             task=task, workflow=workflow, devices=devices, workflow_overrides=overrides, **run_workflow_kwargs
@@ -248,7 +230,7 @@ def run_matterix_workflow(
     scope_id: str,
     eos_task_name: str,
     *,
-    protocol_type: str | None = None,
+    lab: str,
     devices: dict[str, tuple[str, str]] | None = None,
     headless: bool = True,
     **fields: Any,
@@ -267,13 +249,10 @@ def run_matterix_workflow(
     scope_id so they share one MatterixBackend actor/scene (see get_backend()'s
     docstring) -- this is a plain pass-through, not something this function derives.
 
-    protocol_type: omit it (the default). `eos_task_name` alone is enough to resolve the
-    Matterix workflow whenever that task name is only registered under one protocol --
-    the common case (see protocol_registry.py's `resolve_matterix_call_by_task_name()`
-    for exactly when it isn't, and the ValueError you'd get instead of a silent wrong
-    answer). Passing a real `protocol_type` here is now the exception, not something
-    every task.yml needs to redundantly restate as a parameter -- only do it for a task
-    name that's genuinely ambiguous across two or more of your registered protocols.
+    lab: the calling device's own lab -- pass `self.lab_name` (EOS's BaseDevice exposes
+    it). Together with `eos_task_name` it picks the Matterix scene and workflow (see
+    protocol_registry.py's `resolve_matterix_call_by_lab()`), so nothing about the
+    calling protocol needs to be known or hardcoded.
 
     fields: the workflow's dynamic parameter overrides (e.g. target_temperature=350.0),
     pushed via ONE set_parameters() call regardless of how many there are. Omit entirely
@@ -290,8 +269,8 @@ def run_matterix_workflow(
     """
     backend = get_backend(scope_id)
     if fields:
-        ray.get(backend.set_parameters.remote(protocol_type, eos_task_name, fields))
-    result = ray.get(backend.run_workflow.remote(protocol_type, eos_task_name, devices=devices, headless=headless))
+        ray.get(backend.set_parameters.remote(lab, eos_task_name, fields))
+    result = ray.get(backend.run_workflow.remote(lab, eos_task_name, devices=devices, headless=headless))
     if not result.success:
         raise RuntimeError(f"Failed to run workflow {eos_task_name!r}: {result.failure_detail}")
     return result

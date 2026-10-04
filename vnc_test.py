@@ -20,8 +20,9 @@ Stages, in increasing order of how much of the real stack they exercise:
                            turns on, beaker gets picked up and placed on the plate, and its
                            temperature should visibly climb in the printed observations.
     3. Real device path -- get_backend() -> MatterixBackend Ray actor -> run_workflow(),
-                            the *exact* code path Heater.heat_to() takes from a real EOS
-                            task. Exercises the PYTHONPATH/num_gpus/DISPLAY/record_path
+                            the code path beaker_lab's arm device takes from a real EOS
+                            task (EOS's user/beaker_lab, pick_beaker, resolved by lab).
+                            Exercises the PYTHONPATH/num_gpus/DISPLAY/record_path
                             fixes made to matterix_backend.py and runtime.py.
 
 Isaac Sim boots once and stays alive across stages run in the same invocation (that's the
@@ -92,10 +93,8 @@ def run_stage_3() -> None:
     from user.matterix_bridge.common.matterix_backend import get_backend
 
     backend = get_backend("vnc_test_scope")
-    ray.get(
-        backend.set_parameter.remote("heater_transfer_protocol", "turn_on_heater", "target_temperature", 363.15)
-    )
-    result = ray.get(backend.run_workflow.remote("heater_transfer_protocol", "turn_on_heater", headless=False))
+    ray.get(backend.set_parameter.remote("beaker_lab", "pick_beaker", "description", "vnc test stage 3"))
+    result = ray.get(backend.run_workflow.remote("beaker_lab", "pick_beaker", headless=False))
     print(f"\nRESULT: {result}")
     assert result.success, "workflow did not succeed"
     ok("Stage 3 -- MatterixBackend actor path succeeded (this is the real EOS-triggered path)")
