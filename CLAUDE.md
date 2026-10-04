@@ -126,10 +126,16 @@ below), or — for an EOS package that wants zero bridge-owned scene YAML at all
 `schema/from_eos.py`,
 which builds one directly from that package's own `labs/<lab>/lab.yml` (device/resource
 `meta` carries `matterix_catalog`/`pos`/`randomize_position`/etc.) plus each relevant
-protocol's `matterix_workflow.yml` (the one thing `lab.yml` can't express: which Matterix
-action backs a given EOS task). It also generates that package's `matterix_registrations.py`,
-keyed by lab: every protocol's `task_workflows` in one lab merge into that lab's bindings,
-and two protocols mapping the same task name to different workflow keys is an error.
+protocol's `protocol.yml`, where each task with a sim twin carries a `matterix:` key
+(`action` + `params` -- the one thing `lab.yml` can't express: which Matterix action backs a
+given EOS task; the task name becomes the workflow key). `matterix:` isn't an EOS field --
+`TaskDef`/`ProtocolDef` are plain pydantic models that silently drop unknown keys (verified,
+including through `ConfigurationManager.load_protocol()`'s validators), so `from_eos.py`
+reads it from the raw YAML; it would break if EOS ever set `extra="forbid"`. No `bundles`
+via this path (dev-only composites; `compile_scene.py` still supports them). It also
+generates that package's `matterix_registrations.py`, keyed by lab: every protocol's
+`matterix:` tasks in one lab merge into that lab's bindings, and two protocols giving the
+same task name different `matterix:` blocks is an error.
 Uses `meta`, not `init_parameters`, deliberately — EOS's `LabValidator` cross-checks
 `init_parameters` keys against `device.yml`'s declared set and raises on anything unknown,
 but `meta` is a genuinely unvalidated bag on `LabDeviceDef`/`ResourceTypeDef`/`ResourceDef`

@@ -12,13 +12,12 @@ a hand-written scene -- that import only happens later, when Isaac Sim boots and
 
 Two ways to *reach* a SceneSpec: hand-write one as scene_specs/*.yaml (compile_scene.py),
 or -- for an EOS package that wants zero bridge-owned scene YAML at all -- derive one
-straight from that package's own lab.yml + matterix_workflow.yml files (from_eos.py). The
+straight from that package's own lab.yml + protocol.yml files (from_eos.py). The
 compiler itself (compiler.py) doesn't care which path built the SceneSpec it's given.
 
     catalog.py     - loads catalog.json, the offline record of what Matterix ships
                       (see dump_catalog.py) that validation checks names/fields against.
-    models.py       - the schema itself: SceneSpec/AssetSpec/WorkflowStep/
-                       WorkflowBindingSpec (pydantic).
+    models.py       - the schema itself: SceneSpec/AssetSpec/WorkflowStep (pydantic).
     robot_metadata.py - the small set of facts that are properties of a robot catalog
                          entry, not the scene (gripper joint names, action-space constant)
                          -- see that module's docstring for why this exists and its
@@ -26,8 +25,8 @@ compiler itself (compiler.py) doesn't care which path built the SceneSpec it's g
     compiler.py     - SceneSpec -> rendered `*_env_cfg.py` + `__init__.py` text.
     compile_scene.py - CLI: scene_specs/*.yaml path -> validate -> render -> write into
                         scenes/<name>/.
-    from_eos.py     - CLI: an EOS package's root -> read its labs/*/lab.yml + protocols'
-                        matterix_workflow.yml -> assemble a SceneSpec -> same render/write
+    from_eos.py     - CLI: an EOS package's root -> read its labs/*/lab.yml + each
+                        protocol.yml task's matterix: block -> assemble a SceneSpec -> same render/write
                         as compile_scene.py, plus a generated matterix_registrations.py.
                         The only module here that imports anything from `eos` itself
                         (`eos.configuration.entities`, for its LabDef/ProtocolDef parsers)

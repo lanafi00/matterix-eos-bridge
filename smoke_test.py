@@ -154,7 +154,7 @@ try:
     ok(f"get_lab_twins() returned {len(twins)} lab(s), get_lab_task_workflows() returned {len(workflows)} task(s)")
 
     task, workflow = resolve_matterix_call_by_lab("beaker_lab", "pick_beaker")
-    expected = ("Matterix-Lab-BeakerLab-v1", "pickup_beaker")
+    expected = ("Matterix-Lab-BeakerLab-v1", "pick_beaker")
     assert (task, workflow) == expected, f"got {(task, workflow)}, expected {expected}"
     ok(f"resolved ('beaker_lab', 'pick_beaker') to {(task, workflow)} -- no collision with Stage 2's ambiguous name")
 

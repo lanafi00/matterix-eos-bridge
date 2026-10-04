@@ -1,8 +1,7 @@
 """CLI: generate an EOS package's Matterix scene(s) + matterix_registrations.py directly
-from its own lab.yml + each relevant protocol's matterix_workflow.yml -- no bridge-owned
-scene_specs/*.yaml needed. See README.md's "Using this from your own EOS package" for the
-authoring convention this implements, and models.py's `WorkflowBindingSpec` docstring for
-what a matterix_workflow.yml contains.
+from its own lab.yml + protocol.yml files -- no bridge-owned scene_specs/*.yaml needed.
+See README.md's "Using this from your own EOS package" for the authoring convention this
+implements.
 
 Placement convention (all per EOS package, alongside its own pyproject.toml):
   - `labs/<lab_name>/lab.yml` -- devices' and resources'/resource_types' `meta` dicts
@@ -10,14 +9,24 @@ Placement convention (all per EOS package, alongside its own pyproject.toml):
     what marks a device/resource as having no sim twin at all, silently skipped), `pos`,
     `rot`, `mass`, `semantics`, `randomize_position`, `randomize_temperature`. Same
     fields AssetSpec already accepts; see its docstring for what each means.
-  - `protocols/<protocol_type>/matterix_workflow.yml` -- one per protocol that has a sim
-    twin (a protocol with none just has no such file, and is silently skipped). Parses
-    as `WorkflowBindingSpec`.
+  - `protocols/<protocol_type>/protocol.yml` -- each task with a sim twin carries a
+    `matterix:` key, parsed as a `WorkflowStep` (`action` + `params`): the Matterix
+    action that backs that task. A task without one has no sim twin and is silently
+    skipped. The task's own name becomes its Matterix workflow key. `params` name asset
+    slots (`agent_assets`, `object`, `target`) directly by their lab.yml device/resource
+    name, not the task's own `devices:`/`resources:` role names.
+
+    EOS has no official slot for this on a task (TaskDef has no `meta`, unlike lab.yml's
+    devices/resources): it works because TaskDef/ProtocolDef are plain pydantic models
+    that silently ignore unknown keys -- verified, and nothing else in EOS reads or
+    rewrites protocol.yml's raw YAML in a way that would trip on it. Which is also why
+    this reads `matterix:` from the raw YAML, not from the parsed ProtocolDef: pydantic
+    drops it there. If EOS ever switches TaskDef to `extra="forbid"`, this breaks.
 
 Registrations are keyed by lab, not protocol (`register_lab()`/
 `register_lab_task_workflow()` -- see common/protocol_registry.py): one scene per lab,
-and each protocol's `task_workflows` merged into that lab's bindings. A device driver
-then resolves with its own `self.lab_name`, never a hardcoded protocol type.
+and every protocol's `matterix:` tasks in that lab merged into its bindings. A device
+driver then resolves with its own `self.lab_name`, never a hardcoded protocol type.
 
 Reuses EOS's own LabDef/ProtocolDef parsers (not a hand-rolled reimplementation), so this
 stays in sync with whatever lab.yml/protocol.yml actually accept. Safe to do only because
@@ -49,7 +58,7 @@ from eos.configuration.entities.lab_def import LabDef
 from eos.configuration.entities.protocol_def import ProtocolDef
 
 from .compiler import compile_scene
-from .models import AssetSpec, SceneSpec, WorkflowBindingSpec
+from .models import AssetSpec, SceneSpec, WorkflowStep
 
 _ARTICULATED = "articulated"
 _OBJECT = "object"
@@ -101,83 +110,58 @@ def _build_assets(lab: LabDef) -> dict[str, AssetSpec]:
     return assets
 
 
-def _find_workflow_protocol_dirs(protocols_dir: Path, lab_name: str) -> list[Path]:
-    """Every protocols/*/ directory whose protocol.yml lists `lab_name` under `labs:` AND
-    has a sibling matterix_workflow.yml. A protocol with no sim twin just has no such
-    file -- silently skipped, not an error."""
-    if not protocols_dir.is_dir():
-        return []
-    found = []
-    for protocol_yml in sorted(protocols_dir.glob("*/protocol.yml")):
-        if not (protocol_yml.parent / "matterix_workflow.yml").is_file():
+def _load_matterix_tasks(protocol_yml: Path) -> tuple[ProtocolDef, dict[str, WorkflowStep]]:
+    """Parse one protocol.yml: the ProtocolDef (validated by EOS's own model) plus
+    `{task_name: WorkflowStep}` for every task carrying a `matterix:` key -- read from the
+    raw YAML, since ProtocolDef silently drops unknown keys (see module docstring)."""
+    raw = yaml.safe_load(protocol_yml.read_text())
+    protocol = ProtocolDef(**raw)
+    steps: dict[str, WorkflowStep] = {}
+    for task in raw.get("tasks", []):
+        if "matterix" not in task:
             continue
-        protocol = ProtocolDef(**yaml.safe_load(protocol_yml.read_text()))
-        if lab_name in protocol.labs:
-            found.append(protocol_yml.parent)
-    return found
-
-
-def _load_workflow_binding(protocol_dir: Path) -> tuple[ProtocolDef, WorkflowBindingSpec]:
-    protocol = ProtocolDef(**yaml.safe_load((protocol_dir / "protocol.yml").read_text()))
-    binding = WorkflowBindingSpec(**yaml.safe_load((protocol_dir / "matterix_workflow.yml").read_text()))
-
-    task_names = {t.name for t in protocol.tasks}
-    unknown = sorted(set(binding.task_workflows) - task_names)
-    if unknown:
-        raise ValueError(
-            f"{protocol_dir / 'matterix_workflow.yml'}: task_workflows names task(s) "
-            f"{unknown} not declared in {protocol_dir / 'protocol.yml'}. "
-            f"Known tasks: {sorted(task_names)}"
-        )
-    return protocol, binding
+        try:
+            steps[task["name"]] = WorkflowStep(**task["matterix"])
+        except (TypeError, ValidationError) as e:
+            raise ValueError(f"{protocol_yml}: task {task['name']!r}: invalid matterix block -- {e}") from e
+    return protocol, steps
 
 
 def compile_lab(lab_dir: Path, package_dir: Path, scenes_dir: Path) -> tuple[SceneSpec, dict[str, str]]:
     """Build + compile one lab's scene from its lab.yml, folding in every workflow
     binding contributed by the package's protocols that reference this lab. Returns the
     compiled spec plus this lab's `{task_name: workflow_key}` bindings, merged across
-    those protocols.
+    those protocols (always identity -- a task's workflow key is its own name).
 
-    Raises ValueError if two protocols in this lab bind the same EOS task name to
-    different workflow keys -- registrations are keyed by (lab, task name), so that
-    would be genuinely ambiguous at runtime.
+    Raises ValueError if two protocols in this lab give the same EOS task name different
+    `matterix:` blocks -- registrations are keyed by (lab, task name), so that would be
+    genuinely ambiguous at runtime.
     """
     lab = LabDef(**yaml.safe_load((lab_dir / "lab.yml").read_text()))
     assets = _build_assets(lab)
     gym_id = f"Matterix-Lab-{_pascal(lab.name)}-v1"
 
-    workflows: dict[str, Any] = {}
-    bundles: dict[str, Any] = {}
-    task_workflows: dict[str, str] = {}
-    task_sources: dict[str, Path] = {}
+    workflows: dict[str, WorkflowStep] = {}
+    sources: dict[str, Path] = {}
 
-    for protocol_dir in _find_workflow_protocol_dirs(package_dir / "protocols", lab.name):
-        _, binding = _load_workflow_binding(protocol_dir)
-
-        for key, step in binding.workflows.items():
-            if key in workflows and workflows[key] != step:
-                raise ValueError(f"workflows key {key!r} redefined differently by {protocol_dir}")
-            workflows[key] = step
-        for key, steps in binding.bundles.items():
-            if key in bundles and bundles[key] != steps:
-                raise ValueError(f"bundles key {key!r} redefined differently by {protocol_dir}")
-            bundles[key] = steps
-
-        for task_name, workflow_key in binding.task_workflows.items():
-            if task_name in task_workflows and task_workflows[task_name] != workflow_key:
+    for protocol_yml in sorted((package_dir / "protocols").glob("*/protocol.yml")):
+        protocol, steps = _load_matterix_tasks(protocol_yml)
+        if lab.name not in protocol.labs:
+            continue
+        for task_name, step in steps.items():
+            if task_name in workflows and workflows[task_name] != step:
                 raise ValueError(
-                    f"task {task_name!r} in lab {lab.name!r} is bound to workflow "
-                    f"{task_workflows[task_name]!r} by {task_sources[task_name]} but "
-                    f"{workflow_key!r} by {protocol_dir} -- registrations are keyed by "
-                    "(lab, task name), so both protocols must agree"
+                    f"task {task_name!r} in lab {lab.name!r} has a different matterix block in "
+                    f"{protocol_yml} than in {sources[task_name]} -- registrations are keyed "
+                    "by (lab, task name), so both protocols must agree"
                 )
-            task_workflows[task_name] = workflow_key
-            task_sources[task_name] = protocol_dir
+            workflows[task_name] = step
+            sources[task_name] = protocol_yml
 
-    spec = SceneSpec(name=lab.name, gym_id=gym_id, assets=assets, workflows=workflows, bundles=bundles)
+    spec = SceneSpec(name=lab.name, gym_id=gym_id, assets=assets, workflows=workflows)
 
     regen_hint = (
-        f"Generated from {lab_dir / 'lab.yml'} (+ its protocols' matterix_workflow.yml) --\n"
+        f"Generated from {lab_dir / 'lab.yml'} (+ its protocols' matterix: task blocks) --\n"
         f"not a hand-authored scene_specs/*.yaml. Regenerate with:\n"
         f"    python -m schema.from_eos {package_dir}"
     )
@@ -187,7 +171,7 @@ def compile_lab(lab_dir: Path, package_dir: Path, scenes_dir: Path) -> tuple[Sce
     (out_dir / f"{spec.name}_env_cfg.py").write_text(env_cfg_text)
     (out_dir / "__init__.py").write_text(init_text)
 
-    return spec, task_workflows
+    return spec, {task_name: task_name for task_name in workflows}
 
 
 def _render_registrations(labs: list[tuple[str, str, dict[str, str]]]) -> str:
@@ -195,7 +179,7 @@ def _render_registrations(labs: list[tuple[str, str, dict[str, str]]]) -> str:
     lines = [
         '"""Generated by `python -m schema.from_eos` -- DO NOT EDIT BY HAND.',
         "",
-        "Regenerate after editing any labs/*/lab.yml or protocols/*/matterix_workflow.yml",
+        "Regenerate after editing any labs/*/lab.yml or a protocols/*/protocol.yml matterix: block",
         "in this package (run from matterix_bridge's own repo root -- see schema/from_eos.py):",
         "    python -m schema.from_eos <this package's root>",
         '"""',
