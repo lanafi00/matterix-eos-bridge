@@ -94,6 +94,9 @@ class MatterixBackend:
         `run_workflow_kwargs` (num_envs, max_episodes, record_video, ... -- see
         runtime.run_workflow's real signature) pass straight through.
 
+        Scene state persists across calls: each one continues from where the last left
+        the scene (see runtime.run_workflow's `reset` param), not from a fresh reset.
+
         Every call against this SAME actor (i.e. every DAG task in one protocol run,
         sharing one scope_id) must resolve to the same `task`/`num_envs`/`devices` -- see
         `runtime._get_env()`'s docstring. Two EOS tasks in one protocol run that map to
@@ -110,8 +113,18 @@ class MatterixBackend:
 
         task, workflow = _resolve(lab, eos_task_name)
         overrides = self._params.get(workflow)
+        # reset=False: this actor's scene is the protocol run's one shared bench, so each
+        # EOS task continues from where the previous one left it (e.g. place_beaker
+        # starts with the beaker still in the gripper from pick_beaker) instead of a fresh
+        # reset that would silently undo every earlier task. The env is reset once, when
+        # first built for this scope.
         return run_workflow(
-            task=task, workflow=workflow, devices=devices, workflow_overrides=overrides, **run_workflow_kwargs
+            task=task,
+            workflow=workflow,
+            devices=devices,
+            workflow_overrides=overrides,
+            reset=False,
+            **run_workflow_kwargs,
         )
 
 

@@ -20,7 +20,7 @@ Typical usage from a long-lived worker process:
         ...
 
 Calling `run_workflow()` again with the *same* `task`/`num_envs`/`devices` reuses the
-existing environment (just resets it), so a sequence of workflow calls against one
+existing environment (resetting it, unless `reset=False`), so a sequence of workflow calls against one
 digital twin stays fast. Calling it again with a DIFFERENT `task`/`num_envs`/`devices`
 raises `RuntimeError` instead of rebuilding - see `_get_env()`'s docstring for why this
 isn't just unsupported but actively unsafe to attempt (a real, reproduced, indefinite
@@ -406,6 +406,7 @@ def run_workflow(
     video_dir: str = "out/videos",
     headless: bool = True,
     print_progress: bool = True,
+    reset: bool = True,
 ) -> WorkflowResult:
     """Run one Matterix workflow to completion (or until `max_episodes`) and return the outcome.
 
@@ -443,6 +444,15 @@ def run_workflow(
         headless: Only affects Isaac Sim's boot on the first call in this process.
         print_progress: Print the same per-episode/per-50-step status lines the CLI
             script prints. Set False for a quiet library call.
+        reset: If True (the default), the first episode starts from `env.reset()` -- a
+            fresh, re-randomized scene, as if nothing had run before. If False, it starts
+            from wherever the previous `run_workflow()` call left the scene (e.g. a beaker
+            still held in the gripper after a pick), so a sequence of calls behaves like
+            consecutive steps on one physical bench. Used by `MatterixBackend`, where each
+            EOS task in a protocol run is one call. The env's episode step counter is still
+            zeroed, so each call gets the full `episode_length_s` budget before a time-out
+            auto-reset. Episodes after the first (`max_episodes > 1`) always reset. The
+            env is reset once when it's first built either way (see `_get_env()`).
 
     Returns:
         A `WorkflowResult` with per-env success flags for the final episode run.
@@ -511,7 +521,11 @@ def run_workflow(
 
     while episode_count < max_episodes:
         with torch.inference_mode():
-            obs, _ = env.reset()
+            if reset or episode_count > 0:
+                obs, _ = env.reset()
+            else:
+                env.episode_length_buf.zero_()
+                obs = env.observation_manager.compute()
             sm.reset()
             episode_count += 1
             step_count = 0
