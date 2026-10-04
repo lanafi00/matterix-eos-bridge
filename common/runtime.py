@@ -60,6 +60,20 @@ _current_num_envs: int | None = None
 _current_devices: dict[str, tuple[str, str]] | None = None
 _current_env = None
 _current_env_cfg = None
+# The scene's latest observation: set when the env is built (its one reset), after every
+# env.step(), and after any explicit reset. A reset=False run_workflow() call starts its
+# state machine from this instead of resetting the scene. None means "no continuable
+# scene" -- never built, or a mid-workflow auto-reset already wiped the state a reset=False
+# caller would be continuing from (see run_workflow()).
+_current_obs = None
+
+# episode_length_s used for reset=False calls -- effectively disables isaaclab's time_out
+# termination for that call (max_episode_length is computed live from cfg.episode_length_s,
+# VERIFIED in MatterixBaseEnv). A protocol run's tasks share one long episode on purpose,
+# so a time-out there would silently restart the scene mid-protocol. Not float("inf"):
+# max_episode_length does math.ceil() on it. Each matterix_sm primitive still has its own
+# timeout (10s default), so a stuck workflow still ends -- as a failure, not a hang.
+_NO_TIME_OUT_EPISODE_LENGTH_S = 1e9
 
 
 def _eos_path() -> str:
@@ -300,7 +314,7 @@ def _get_env(
     scope_id (a fresh actor, a fresh process) for that portion, not a second
     `run_workflow()` call with different arguments against the same one.
     """
-    global _current_task, _current_num_envs, _current_devices, _current_env, _current_env_cfg
+    global _current_task, _current_num_envs, _current_devices, _current_env, _current_env_cfg, _current_obs
 
     import gymnasium as gym
     from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
@@ -382,7 +396,7 @@ def _get_env(
                 )
 
         env = gym.make(task, cfg=env_cfg, render_mode=render_mode).unwrapped
-        env.reset()
+        _current_obs, _ = env.reset()
 
         _current_task = task
         _current_num_envs = num_envs
@@ -444,15 +458,19 @@ def run_workflow(
         headless: Only affects Isaac Sim's boot on the first call in this process.
         print_progress: Print the same per-episode/per-50-step status lines the CLI
             script prints. Set False for a quiet library call.
-        reset: If True (the default), the first episode starts from `env.reset()` -- a
-            fresh, re-randomized scene, as if nothing had run before. If False, it starts
-            from wherever the previous `run_workflow()` call left the scene (e.g. a beaker
-            still held in the gripper after a pick), so a sequence of calls behaves like
-            consecutive steps on one physical bench. Used by `MatterixBackend`, where each
-            EOS task in a protocol run is one call. The env's episode step counter is still
-            zeroed, so each call gets the full `episode_length_s` budget before a time-out
-            auto-reset. Episodes after the first (`max_episodes > 1`) always reset. The
-            env is reset once when it's first built either way (see `_get_env()`).
+        reset: If True (the default), every episode starts from `env.reset()` -- a
+            fresh, re-randomized scene -- and an automatic reset mid-episode (time-out or
+            other termination) restarts the action sequence, as before. If False, the
+            first episode skips the reset and starts the state machine from the saved
+            `_current_obs`: wherever the previous call left the scene (e.g. a beaker still
+            in the gripper after a pick), so consecutive calls behave like consecutive
+            steps on one bench. Used by `MatterixBackend`, where each EOS task in a
+            protocol run is one call; the scene is reset only once, when `_get_env()`
+            builds it. For the duration of a reset=False call the time-out is effectively
+            off (see `_NO_TIME_OUT_EPISODE_LENGTH_S`), and if the env auto-resets anyway
+            mid-workflow, this raises RuntimeError instead of restarting -- a protocol that
+            quietly starts over would report success for something that never happened.
+            Episodes after the first (`max_episodes > 1`) always reset.
 
     Returns:
         A `WorkflowResult` with per-env success flags for the final episode run.
@@ -462,6 +480,8 @@ def run_workflow(
             task/num_envs/devices (see `_get_env()`'s docstring -- rebuilding one in
             process is unsafe, not just unsupported). Call this with the SAME
             task/num_envs/devices every time in one process, or use a fresh process.
+        RuntimeError: Also, with reset=False, if the env auto-resets mid-workflow, or if
+            an earlier call's auto-reset already wiped the scene (start a new scope).
         ValueError: If `workflow` is not defined on `task`; if `devices` names a slot
             that doesn't exist on `task`; or if `workflow_overrides` is given for a
             composite (dict/list) workflow, or names a field the resolved workflow
@@ -469,9 +489,8 @@ def run_workflow(
         KeyError: If `devices` names a `(lab_name, device_name)` pair with no entry in
             `DEVICE_TWINS`.
     """
+    global _current_obs
     ensure_app_launched(headless=headless, device=device, enable_cameras=record_video)
-
-    import torch
 
     from matterix_sm import StateMachine
 
@@ -511,6 +530,34 @@ def run_workflow(
     sm = StateMachine(num_envs=env.num_envs, dt=env.step_dt, device=env.device)
     sm.set_action_sequence(actions)
 
+    continuing = not reset
+    if continuing and _current_obs is None:
+        raise RuntimeError(
+            f"run_workflow({workflow!r}, reset=False): this scene has no state to continue "
+            "from -- an earlier workflow in this process was interrupted by an automatic "
+            "reset, which wiped the scene. Start a new run (a new MatterixBackend scope_id) "
+            "rather than continuing from a reset scene."
+        )
+    saved_episode_length_s = env.cfg.episode_length_s
+    if continuing:
+        env.cfg.episode_length_s = _NO_TIME_OUT_EPISODE_LENGTH_S
+    try:
+        return _run_episodes(
+            env, sm, workflow, task, num_envs, max_episodes, continuing, record_video,
+            video_dir, print_progress,
+        )
+    finally:
+        env.cfg.episode_length_s = saved_episode_length_s
+
+
+def _run_episodes(
+    env, sm, workflow, task, num_envs, max_episodes, continuing, record_video, video_dir, print_progress
+) -> WorkflowResult:
+    """run_workflow()'s episode loop -- split out only so run_workflow() can restore
+    env.cfg.episode_length_s in a `finally` around it. See run_workflow()'s `reset` arg."""
+    global _current_obs
+    import torch
+
     run_ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     task_slug = task.replace("/", "_")
     workflow_slug = workflow.replace("/", "_")
@@ -521,11 +568,11 @@ def run_workflow(
 
     while episode_count < max_episodes:
         with torch.inference_mode():
-            if reset or episode_count > 0:
-                obs, _ = env.reset()
+            if continuing and episode_count == 0:
+                obs = _current_obs
             else:
-                env.episode_length_buf.zero_()
-                obs = env.observation_manager.compute()
+                obs, _ = env.reset()
+                _current_obs = obs
             sm.reset()
             episode_count += 1
             step_count = 0
@@ -550,10 +597,23 @@ def run_workflow(
                     # than patching this scoping gap in Matterix itself.
                     action = env.action_manager.action
                 obs, _, terminated, truncated, _ = env.step(action, semantic_actions=semantic_actions)
+                _current_obs = obs
                 step_count += 1
 
                 reset_ids = (terminated | truncated).nonzero(as_tuple=False).flatten()
                 if reset_ids.numel() > 0:
+                    if continuing:
+                        # env.step() has ALREADY reset these envs internally (MatterixBaseEnv
+                        # calls _reset_idx() inside step) -- too late to prevent, so make it
+                        # loud and make sure nothing continues from the reset scene.
+                        _current_obs = None
+                        kind = "time-out" if truncated[reset_ids].any() else "termination"
+                        raise RuntimeError(
+                            f"Workflow {workflow!r} on {task}: env(s) {reset_ids.tolist()} were "
+                            f"automatically reset mid-workflow ({kind}) at step {step_count}. The "
+                            "scene restarted, so this run's earlier tasks no longer hold -- "
+                            "failing instead of silently restarting the workflow. Start a new run."
+                        )
                     sm.reset_envs(reset_ids)
 
                 if print_progress and step_count % 50 == 0:
@@ -590,9 +650,11 @@ def shutdown() -> None:
     """Close the current env and Isaac Sim app. Call once at process exit - not between
     `run_workflow()` calls, which is exactly the cost this module exists to avoid."""
     global _current_env, _current_task, _current_num_envs, _current_devices, _simulation_app, _app_launcher
+    global _current_obs
     if _current_env is not None:
         _current_env.close()
         _current_env = None
+        _current_obs = None
         _current_task = None
         _current_num_envs = None
         _current_devices = None
