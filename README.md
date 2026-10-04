@@ -79,6 +79,14 @@ this end to end, and `schema/from_eos.py`'s own docstring / `schema/models.py`'s
            x: [-0.1, 0.1]
    ```
 
+   `pick_object`/`place_object` move the gripper to named frames on their target
+   (`pre_grasp`/`grasp`/`post_grasp` on what's picked, `pre_place`/`place` on where it's
+   placed), which come from the asset class itself -- e.g. `labware/beaker_500ml_inst`
+   has the grasp frames, `equipment/ika_plate_inst` the place frames. Static objects
+   (tables) have none and can't get any (Matterix frames only work on rigid bodies), so
+   place onto a rigid asset such as an IKA plate, not straight onto a table.
+   `from_eos.py` rejects a target missing a needed frame before Isaac Sim ever boots.
+
    Pure scene furniture with no real device/resource behind it (a table nothing ever
    allocates) still gets declared as a `resource_type`/`resource` pair -- it just never
    appears in any `protocol.yml` task's `resources:` block.

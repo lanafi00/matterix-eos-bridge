@@ -336,15 +336,21 @@ try:
 
     # A field override in the call -- confirms set_parameters() (not just set_parameter())
     # actually gets exercised, and that lab= resolves correctly through the real Ray
-    # actor, not just the bare protocol_registry function Stage 3 tested.
+    # actor, not just the bare protocol_registry function Stage 3 tested. place_beaker
+    # right after Stage 8's pick_beaker on the same scope is beaker_lab_pick_and_place_
+    # protocol's real sequence, and relies on the actor NOT resetting the scene between
+    # calls (runtime.run_workflow's reset=False) -- otherwise it places with an empty
+    # gripper. Success alone can't tell those apart (Matterix's place success is
+    # pose-based), so smoke_test only checks it runs; the physical carry was verified
+    # separately by reading beaker_1's world position (see that commit's message).
     result = run_matterix_workflow(
         "smoke_test_scope",
-        "pick_beaker",
+        "place_beaker",
         lab="beaker_lab",
         headless=True,
         description="smoke test stage 9",
     )
-    ok(f"run_matterix_workflow(lab='beaker_lab') completed: success={result.success}")
+    ok(f"run_matterix_workflow(lab='beaker_lab') place_beaker after Stage 8's pick completed: success={result.success}")
 
     try:
         run_matterix_workflow("smoke_test_scope", "no_such_task_at_all", lab="beaker_lab", headless=True)

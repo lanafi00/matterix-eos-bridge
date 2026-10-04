@@ -111,6 +111,22 @@ class AssetSpec(BaseModel):
     randomize_temperature: TemperatureRandomization | None = None
 
 
+# action -> (the params field naming the asset it acts on, the frames that asset needs).
+# Mirrors matterix_sm's PickObjectCfg/PlaceObjectCfg sub-action sequences (MoveToFrame on
+# each of these frame names). Checked offline against each asset class's own default
+# frames (catalog.json), so a missing frame fails here, not as a "Scene entity ... not
+# found" KeyError after a 1-2 minute Isaac Sim boot. There's deliberately no per-scene way
+# to ADD frames: Matterix implements them as isaaclab FrameTransformer sensors, which only
+# work on rigid bodies -- VERIFIED live, frames on the static Seattle table fail at scene
+# build with "... is not a rigid body. The class only supports transformations between
+# rigid bodies." -- and every rigid asset that's a sensible place target (ika_plate)
+# already ships its own. Place onto one of those instead of a static object.
+_REQUIRED_FRAMES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "pick_object": ("object", ("pre_grasp", "grasp", "post_grasp")),
+    "place_object": ("target", ("pre_place", "place")),
+}
+
+
 class WorkflowStep(BaseModel):
     action: str
     """A key into catalog.json's "actions" (e.g. "pick_object") -- see dump_catalog.py."""
@@ -310,6 +326,24 @@ class SceneSpec(BaseModel):
                         f"kind={self.assets[ref].kind!r}, not 'articulated' -- only a "
                         "robot (articulated asset) can be an agent."
                     )
+
+        required = _REQUIRED_FRAMES.get(action)
+        if required is not None:
+            ref_field, frame_names = required
+            slot = params.get(ref_field)
+            if isinstance(slot, str) and slot in self.assets:
+                asset = self.assets[slot]
+                asset_entry = catalog.assets.get(asset.catalog)
+                if asset_entry is not None:  # unknown catalog key -- reported by _validate_catalog
+                    have = set(asset_entry["fields"].get("frames", {}).get("default") or {})
+                    missing = [f for f in frame_names if f not in have]
+                    if missing:
+                        errors.append(
+                            f"{context}: {action} needs frame(s) {missing} on {ref_field} "
+                            f"{slot!r}, but {asset.catalog} only has {sorted(have)}. Pick a "
+                            "catalog asset that has them (e.g. equipment/ika_plate_inst as a "
+                            "place target) -- static objects like tables can't carry frames."
+                        )
 
     @model_validator(mode="after")
     def _validate_catalog(self) -> "SceneSpec":
