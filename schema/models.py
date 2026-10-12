@@ -41,6 +41,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from .catalog import Catalog, load_catalog
+from .package_assets import PackageAssetDef
 
 
 class PositionRandomization(BaseModel):
@@ -85,7 +86,8 @@ class AssetSpec(BaseModel):
 
     catalog: str
     """A key into catalog.json's "assets" (e.g. "robots/franka_panda_high_pd_ik") -- see
-    dump_catalog.py. Checked against the catalog by `SceneSpec._validate_catalog` below."""
+    dump_catalog.py -- or into the scene's own `package_assets` (e.g. "ncsu_lab/vial_20ml",
+    see package_assets.py). Checked by `SceneSpec._validate_catalog` below."""
 
     pos: tuple[float, float, float] = (0.0, 0.0, 0.0)
     rot: tuple[float, float, float, float] | None = None
@@ -193,6 +195,12 @@ class SceneSpec(BaseModel):
     for them -- see runtime.run_workflow's `workflow` param), just as a list value instead
     of a single Cfg call."""
 
+    package_assets: dict[str, PackageAssetDef] = Field(default_factory=dict)
+    """Assets an EOS package ships itself (`<package>/assets/assets.yml`, keyed
+    "<package>/<asset>" -- see package_assets.py). An `AssetSpec.catalog` naming one of
+    these resolves here instead of catalog.json; compiler.py emits a config class for it
+    inline. Only the ones some asset slot actually uses end up in the generated scene."""
+
     global_semantics: list[SemanticsSpec] = Field(default_factory=list)
     """Environment-level semantics (e.g. "ambient_air_heat_convection") -- rendered as the
     env cfg class's own `semantics = [...]` attribute, distinct from any asset's own
@@ -251,6 +259,14 @@ class SceneSpec(BaseModel):
         if errors:
             raise ValueError("\n  - " + "\n  - ".join(errors))
         return self
+
+    def asset_entries(self, catalog: Catalog) -> dict[str, dict]:
+        """catalog.json's "assets" plus this scene's package assets, in catalog.json's own
+        entry shape (see PackageAssetDef.catalog_entry()), so every check below treats
+        both the same way. Package keys always contain the package's own name as their
+        first segment, which load_package_assets() guarantees never collides with a
+        built-in category."""
+        return {**catalog.assets, **{key: asset.catalog_entry() for key, asset in self.package_assets.items()}}
 
     @staticmethod
     def _validate_semantics_list(
@@ -333,29 +349,36 @@ class SceneSpec(BaseModel):
             slot = params.get(ref_field)
             if isinstance(slot, str) and slot in self.assets:
                 asset = self.assets[slot]
-                asset_entry = catalog.assets.get(asset.catalog)
+                asset_entry = self.asset_entries(catalog).get(asset.catalog)
                 if asset_entry is not None:  # unknown catalog key -- reported by _validate_catalog
                     have = set(asset_entry["fields"].get("frames", {}).get("default") or {})
                     missing = [f for f in frame_names if f not in have]
                     if missing:
+                        if asset_entry.get("package_asset"):
+                            fix = f"Add them under {asset.catalog}'s `frames:` in the package's assets/assets.yml."
+                        else:
+                            fix = (
+                                "Pick a catalog asset that has them (e.g. equipment/ika_plate_inst as a "
+                                "place target) -- static objects like tables can't carry frames."
+                            )
                         errors.append(
                             f"{context}: {action} needs frame(s) {missing} on {ref_field} "
-                            f"{slot!r}, but {asset.catalog} only has {sorted(have)}. Pick a "
-                            "catalog asset that has them (e.g. equipment/ika_plate_inst as a "
-                            "place target) -- static objects like tables can't carry frames."
+                            f"{slot!r}, but {asset.catalog} only has {sorted(have)}. {fix}"
                         )
 
     @model_validator(mode="after")
     def _validate_catalog(self) -> "SceneSpec":
         catalog = load_catalog()
         errors: list[str] = []
+        asset_entries = self.asset_entries(catalog)
 
         for slot, asset in self.assets.items():
-            entry = catalog.assets.get(asset.catalog)
+            entry = asset_entries.get(asset.catalog)
             if entry is None:
                 errors.append(
-                    f"assets.{slot}.catalog: {asset.catalog!r} not in catalog.json's "
-                    f"assets. Known: {sorted(catalog.assets)}"
+                    f"assets.{slot}.catalog: {asset.catalog!r} not in catalog.json's assets "
+                    f"or this package's assets/assets.yml (package assets are keyed "
+                    f"'<package directory name>/<asset name>'). Known: {sorted(asset_entries)}"
                 )
                 continue
             if entry["kind"] != asset.kind:

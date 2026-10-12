@@ -280,6 +280,30 @@ class WorkflowResult:
     per_env_success: list[bool]
     video_path: str | None = None
     failure_detail: list[dict] | None = None
+    readings: dict[str, list] = dataclasses.field(default_factory=dict)
+    """The scene's "policy" observation group at the end of the workflow, one list entry
+    per env -- e.g. {"vial_1_temperature": [391.2], "hotplate_is_heater_on": [True]}.
+    That group is where compiler.py puts every semantic reading (temperature, contact,
+    heater state; see its `_policy_terms_for_asset()`), so this is how a device driver
+    reads the sim's equivalent of a real instrument's sensor values after a call. Plain
+    Python values, so it crosses the Ray actor boundary as-is. Empty if the scene has no
+    policy group (no asset carries semantics)."""
+
+
+def _policy_readings(obs) -> dict[str, list]:
+    """`obs["policy"]` (a dict of (num_envs, d) tensors, since every compiled group sets
+    concatenate_terms=False) as `{term: per-env values}`; a d == 1 term becomes a flat
+    list of scalars rather than a list of 1-element lists."""
+    group = obs.get("policy") if isinstance(obs, dict) else None
+    if not isinstance(group, dict):
+        return {}
+    readings = {}
+    for name, value in group.items():
+        tensor = value.detach().cpu()
+        if tensor.ndim == 2 and tensor.shape[1] == 1:
+            tensor = tensor[:, 0]
+        readings[name] = tensor.tolist()
+    return readings
 
 
 def _get_env(
@@ -642,7 +666,8 @@ def _run_episodes(
         success=bool(per_env_success.all().item()),
         per_env_success=per_env_success.tolist(),
         video_path=video_path,
-        failure_detail=failed_list
+        failure_detail=failed_list,
+        readings=_policy_readings(_current_obs),
     )
 
 

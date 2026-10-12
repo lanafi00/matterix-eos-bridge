@@ -91,6 +91,50 @@ this end to end, and `schema/from_eos.py`'s own docstring / `schema/models.py`'s
    allocates) still gets declared as a `resource_type`/`resource` pair -- it just never
    appears in any `protocol.yml` task's `resources:` block.
 
+   An EOS device doesn't have to be a robot: which scene container an asset lands in
+   comes from its catalog entry, so a hotplate or spectrometer can be a `devices:` entry
+   (with its own driver) whose twin is a rigid object.
+
+   **Your own labware.** Anything Matterix doesn't ship (vials, racks, holders, your
+   instruments) goes in your package as USD files plus an `assets/assets.yml`, and is
+   referenced as `<package directory name>/<asset name>` -- no change to Matterix needed:
+
+   ```
+   <your_package>/assets/assets.yml
+   <your_package>/assets/usd/vial_20ml.usda
+   ```
+
+   ```yaml
+   # assets/assets.yml
+   vial_20ml:
+     kind: rigid               # rigid | static (static = immovable, can't carry frames)
+     usd: usd/vial_20ml.usda   # relative to assets/
+     mass: 0.03                # kg, required for rigid
+     frames:                   # offsets from the asset's origin, metres
+       pre_grasp: [0.0, 0.0, 0.12]
+       grasp: [0.0, 0.0, 0.04]
+       post_grasp: [0.0, 0.0, 0.12]
+   ```
+
+   ```yaml
+   # labs/<lab>/lab.yml
+   resource_types:
+     vial:
+       meta:
+         matterix_catalog: my_package/vial_20ml
+   ```
+
+   `from_eos.py` validates these exactly like built-in assets (unknown key, missing
+   pick/place frame, missing USD file) and writes a small config class for each one into
+   the generated scene. The USD itself must be Z-up and metric, with no transform on its
+   default prim (isaaclab overwrites that prim's transform with the scene `pos`/`rot`), and
+   for `rigid` the default prim carries `PhysicsRigidBodyAPI` + `PhysicsMassAPI` with
+   collider geometry under it -- the spawner configures physics on the file, it doesn't
+   add it. Frames are fingertip-centre targets: a place target's `place` height = what the
+   object rests on + that object's own `grasp` height. See `schema/package_assets.py` for
+   the full format, and `eos/user/ncsu_lab` (placeholder vial/rack/cuvette/spectrometer
+   USDs written by its `assets/generate_placeholder_usd.py`) for a working example.
+
 2. **The one thing that can't come from `lab.yml`: which Matterix action backs each EOS
    task.** Declare it as a `matterix:` key on that task in
    `<your_package>/protocols/<protocol_type>/protocol.yml` -- `agent_assets`/`object`/
@@ -202,6 +246,12 @@ the EOS package exists), or anything `from_eos.py`'s scope doesn't cover yet:
                    headless=headless, target_value=target_value,
                )
    ```
+
+   `run_matterix_workflow()` returns a `WorkflowResult` whose `readings` holds the
+   scene's semantic state at the end of the workflow, one value per env -- e.g.
+   `result.readings["vial_1_temperature"][0]` (Kelvin). Use it the way a real driver
+   would use a sensor: `eos/user/ncsu_lab`'s hotplate driver fails its hold task if the
+   vial didn't reach temperature.
 
 **Register a device twin, only if your device fills a scene slot (a robot in `articulated_assets`, or a non-robot asset like a hot plate or beaker in `objects`) more than one physical implementation could occupy.** Most devices skip this (and Option A's `matterix_catalog` in `lab.yml` already covers the common case). Goes in a `matterix_devices.py` at your package's root (a sibling of `pyproject.toml`, `labs/`, `devices/`, etc. -- not `scenes/__init__.py`: devices exist independently of any particular scene, and a scene's slots get filled by a device twin at workflow-run time, not the other way around). Bind your lab device directly to the real Matterix asset class:
 

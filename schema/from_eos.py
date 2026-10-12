@@ -22,6 +22,13 @@ Placement convention (all per EOS package, alongside its own pyproject.toml):
     rewrites protocol.yml's raw YAML in a way that would trip on it. Which is also why
     this reads `matterix:` from the raw YAML, not from the parsed ProtocolDef: pydantic
     drops it there. If EOS ever switches TaskDef to `extra="forbid"`, this breaks.
+  - `assets/assets.yml` (optional) -- labware/equipment the package ships itself as USD
+    files; `matterix_catalog: <package>/<asset>` in lab.yml uses one. See
+    schema/package_assets.py for the file format and USD requirements.
+
+Which scene container an asset goes in (`articulated_assets` vs `objects`) comes from
+its catalog entry, not from whether lab.yml lists it as a device or a resource -- an EOS
+device can just as well be a rigid object in the scene (a hotplate, a spectrometer).
 
 Registrations are keyed by lab, not protocol (`register_lab()`/
 `register_lab_task_workflow()` -- see common/protocol_registry.py): one scene per lab,
@@ -57,11 +64,12 @@ from pydantic import ValidationError
 from eos.configuration.entities.lab_def import LabDef
 from eos.configuration.entities.protocol_def import ProtocolDef
 
+from .catalog import load_catalog
 from .compiler import compile_scene
 from .models import AssetSpec, SceneSpec, WorkflowStep
+from .package_assets import load_package_assets
 
 _ARTICULATED = "articulated"
-_OBJECT = "object"
 
 # Fields AssetSpec accepts besides `kind`/`catalog`, read straight off a device/resource's
 # merged `meta` dict when present.
@@ -72,14 +80,19 @@ def _pascal(name: str) -> str:
     return "".join(word.capitalize() for word in name.replace("-", "_").split("_"))
 
 
-def _asset_from_meta(meta: dict[str, Any], *, kind: str, context: str) -> AssetSpec | None:
+def _asset_from_meta(meta: dict[str, Any], *, kinds: dict[str, str], context: str) -> AssetSpec | None:
     """One AssetSpec from a device's or resource's merged `meta` dict, or None if it has
     no `matterix_catalog` -- most EOS devices/resources have no sim twin at all, and
     omitting the key (rather than requiring some other "skip this one" flag) is how a
-    lab.yml author opts a device/resource out with zero extra syntax."""
+    lab.yml author opts a device/resource out with zero extra syntax.
+
+    `kinds` is catalog key -> "articulated"/"object" (built-in + package assets). An
+    unknown key falls back to "articulated" only so the AssetSpec can be built at all --
+    SceneSpec's own catalog check then reports it as unknown, with the known keys."""
     if "matterix_catalog" not in meta:
         return None
-    kwargs: dict[str, Any] = {"kind": kind, "catalog": meta["matterix_catalog"]}
+    catalog_key = meta["matterix_catalog"]
+    kwargs: dict[str, Any] = {"kind": kinds.get(catalog_key, _ARTICULATED), "catalog": catalog_key}
     for key in _ASSET_META_FIELDS:
         if key in meta:
             kwargs[key] = meta[key]
@@ -89,11 +102,11 @@ def _asset_from_meta(meta: dict[str, Any], *, kind: str, context: str) -> AssetS
         raise ValueError(f"{context}: invalid matterix meta -- {e}") from e
 
 
-def _build_assets(lab: LabDef) -> dict[str, AssetSpec]:
+def _build_assets(lab: LabDef, kinds: dict[str, str]) -> dict[str, AssetSpec]:
     assets: dict[str, AssetSpec] = {}
 
     for device_name, device in lab.devices.items():
-        asset = _asset_from_meta(device.meta, kind=_ARTICULATED, context=f"devices.{device_name}.meta")
+        asset = _asset_from_meta(device.meta, kinds=kinds, context=f"devices.{device_name}.meta")
         if asset is not None:
             assets[device_name] = asset
 
@@ -103,7 +116,7 @@ def _build_assets(lab: LabDef) -> dict[str, AssetSpec]:
         # (e.g. this beaker's pos) overrides its type's (e.g. every beaker's catalog key).
         resource_type = lab.resource_types.get(resource.type)
         merged_meta = {**(resource_type.meta if resource_type else {}), **resource.meta}
-        asset = _asset_from_meta(merged_meta, kind=_OBJECT, context=f"resources.{resource_name}.meta")
+        asset = _asset_from_meta(merged_meta, kinds=kinds, context=f"resources.{resource_name}.meta")
         if asset is not None:
             assets[resource_name] = asset
 
@@ -138,7 +151,10 @@ def compile_lab(lab_dir: Path, package_dir: Path, scenes_dir: Path) -> tuple[Sce
     genuinely ambiguous at runtime.
     """
     lab = LabDef(**yaml.safe_load((lab_dir / "lab.yml").read_text()))
-    assets = _build_assets(lab)
+    package_assets = load_package_assets(package_dir)
+    kinds = {key: entry["kind"] for key, entry in load_catalog().assets.items()}
+    kinds.update({key: asset.catalog_entry()["kind"] for key, asset in package_assets.items()})
+    assets = _build_assets(lab, kinds)
     gym_id = f"Matterix-Lab-{_pascal(lab.name)}-v1"
 
     workflows: dict[str, WorkflowStep] = {}
@@ -158,15 +174,22 @@ def compile_lab(lab_dir: Path, package_dir: Path, scenes_dir: Path) -> tuple[Sce
             workflows[task_name] = step
             sources[task_name] = protocol_yml
 
-    spec = SceneSpec(name=lab.name, gym_id=gym_id, assets=assets, workflows=workflows)
+    used_catalog_keys = {asset.catalog for asset in assets.values()}
+    spec = SceneSpec(
+        name=lab.name,
+        gym_id=gym_id,
+        assets=assets,
+        workflows=workflows,
+        package_assets={key: asset for key, asset in package_assets.items() if key in used_catalog_keys},
+    )
 
     regen_hint = (
         f"Generated from {lab_dir / 'lab.yml'} (+ its protocols' matterix: task blocks) --\n"
         f"not a hand-authored scene_specs/*.yaml. Regenerate with:\n"
         f"    python -m schema.from_eos {package_dir}"
     )
-    env_cfg_text, init_text = compile_scene(spec, regen_hint=regen_hint)
     out_dir = scenes_dir / spec.name
+    env_cfg_text, init_text = compile_scene(spec, regen_hint=regen_hint, out_dir=out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / f"{spec.name}_env_cfg.py").write_text(env_cfg_text)
     (out_dir / "__init__.py").write_text(init_text)

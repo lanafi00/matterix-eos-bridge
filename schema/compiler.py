@@ -30,12 +30,14 @@ handful of loose parameters.
 from __future__ import annotations
 
 import dataclasses
+import os
 from pathlib import Path
 
 import jinja2
 
 from .catalog import Catalog, load_catalog
 from .models import AssetSpec, BundleStep, SceneSpec, SemanticsSpec, WorkflowStep
+from .package_assets import PackageAssetDef
 from .robot_metadata import RobotMetadata, get_robot_metadata
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -74,6 +76,9 @@ class _CompileContext:
     semantics_imports: set[str] = dataclasses.field(default_factory=set)
     asset_imports: set[str] = dataclasses.field(default_factory=set)
     action_imports: set[str] = dataclasses.field(default_factory=set)
+    package_class_defs: dict[str, str] = dataclasses.field(default_factory=dict)
+    """catalog key -> the rendered `@configclass` source for a package asset some slot
+    uses (see `_render_package_asset_class()`), emitted once each after the imports."""
 
 
 def _snake_to_pascal(name: str) -> str:
@@ -100,6 +105,56 @@ def _render_kwarg(key: str, value) -> str:
 def _asset_import(catalog_key: str, class_name: str) -> str:
     category = catalog_key.split("/", 1)[0]
     return f"from matterix_assets.{category} import {class_name}"
+
+
+def _package_asset_class_name(catalog_key: str) -> str:
+    """"ncsu_lab/vial_20ml" -> "Vial20mlAssetCfg". Only the asset half: one scene only
+    ever draws package assets from its own package, and the "AssetCfg" suffix keeps it
+    clear of matterix_assets' own ALL_CAPS_CFG names imported into the same module."""
+    return _snake_to_pascal(catalog_key.split("/", 1)[1]) + "AssetCfg"
+
+
+def _render_package_asset_class(
+    catalog_key: str, asset: PackageAssetDef, class_name: str, out_dir: Path | None
+) -> tuple[str, str]:
+    """(class source, base-class import line) for one package asset.
+
+    `usd_path` is written relative to the generated file's own directory when `out_dir`
+    is known (from_eos.py always passes it), so the package can move or be checked out
+    elsewhere without regenerating; absolute otherwise.
+    """
+    if asset.kind == "rigid":
+        base = "MatterixRigidObjectCfg"
+        base_import = "from matterix_assets.matterix_rigid_object import MatterixRigidObjectCfg"
+    else:
+        base = "MatterixStaticObjectCfg"
+        base_import = "from matterix_assets.matterix_static_object import MatterixStaticObjectCfg"
+
+    if out_dir is not None:
+        rel = os.path.relpath(asset.usd_abspath, Path(out_dir).resolve())
+        usd_expr = f"os.path.normpath(os.path.join(_SCENE_DIR, {rel!r}))"
+    else:
+        usd_expr = repr(str(asset.usd_abspath))
+
+    asset_name = catalog_key.split("/", 1)[1]
+    lines = [
+        "@configclass",
+        f"class {class_name}({base}):",
+        f'{_INDENT1}"""Package asset {catalog_key} (from its package\'s assets/assets.yml)."""',
+        "",
+        f"{_INDENT1}usd_path = {usd_expr}",
+    ]
+    if asset.mass is not None:
+        lines.append(f"{_INDENT1}mass = {asset.mass!r}")
+    if asset.scale is not None:
+        lines.append(f"{_INDENT1}scale = {tuple(asset.scale)!r}")
+    if asset.frames:
+        lines.append(f"{_INDENT1}frames = {{")
+        for frame_name, offset in asset.frames.items():
+            lines.append(f"{_INDENT2}{frame_name!r}: {tuple(offset)!r},")
+        lines.append(f"{_INDENT1}}}")
+    lines.append(f'{_INDENT1}semantic_tags = [("class", {asset_name!r})]')
+    return "\n".join(lines), base_import
 
 
 def _semantics_class_and_import(catalog: Catalog, preset_key: str) -> tuple[str, str]:
@@ -355,7 +410,7 @@ def _collect_steps(spec: SceneSpec) -> list[WorkflowStep | BundleStep]:
     return steps
 
 
-def _build_context(spec: SceneSpec, catalog: Catalog) -> _CompileContext:
+def _build_context(spec: SceneSpec, catalog: Catalog, out_dir: Path | None = None) -> _CompileContext:
     articulated_slots = [s for s, a in spec.assets.items() if a.kind == "articulated"]
     object_slots = [s for s, a in spec.assets.items() if a.kind == "object"]
     if not articulated_slots:
@@ -376,9 +431,17 @@ def _build_context(spec: SceneSpec, catalog: Catalog) -> _CompileContext:
         asset_class_names=asset_class_names,
     )
     for slot, asset in spec.assets.items():
-        cls_name = catalog.assets[asset.catalog]["class"].rsplit(".", 1)[-1]
+        package_asset = spec.package_assets.get(asset.catalog)
+        if package_asset is not None:
+            cls_name = _package_asset_class_name(asset.catalog)
+            if asset.catalog not in ctx.package_class_defs:
+                class_def, base_import = _render_package_asset_class(asset.catalog, package_asset, cls_name, out_dir)
+                ctx.package_class_defs[asset.catalog] = class_def
+                ctx.asset_imports.add(base_import)
+        else:
+            cls_name = catalog.assets[asset.catalog]["class"].rsplit(".", 1)[-1]
+            ctx.asset_imports.add(_asset_import(asset.catalog, cls_name))
         asset_class_names[slot] = cls_name
-        ctx.asset_imports.add(_asset_import(asset.catalog, cls_name))
     return ctx
 
 
@@ -457,7 +520,8 @@ def _render_workflows_body(spec: SceneSpec, ctx: _CompileContext) -> tuple[str, 
 
 
 def _render_import_lines(ctx: _CompileContext, const_lines: list[str]) -> list[str]:
-    lines = [
+    lines = ["import os", ""] if ctx.package_class_defs else []
+    lines += [
         "from matterix.envs import MatterixBaseEnvCfg, mdp",
         "from matterix.managers import EventManagerCfg",
         *sorted(ctx.semantics_imports),
@@ -482,10 +546,14 @@ def _render_import_lines(ctx: _CompileContext, const_lines: list[str]) -> list[s
     ]
     if const_lines:
         lines += ["", *const_lines]
+    if ctx.package_class_defs:
+        lines += ["", "_SCENE_DIR = os.path.dirname(os.path.abspath(__file__))"]
     return lines
 
 
-def compile_scene(spec: SceneSpec, *, regen_hint: str | None = None) -> tuple[str, str]:
+def compile_scene(
+    spec: SceneSpec, *, regen_hint: str | None = None, out_dir: Path | None = None
+) -> tuple[str, str]:
     """Render `spec` into (env_cfg_py_text, init_py_text). Raises CompileError naming the
     exact problem for anything this function itself detects (e.g. an unknown robot in
     robot_metadata.py, or two robots with different gripper_joint_names) -- spec is
@@ -498,6 +566,9 @@ def compile_scene(spec: SceneSpec, *, regen_hint: str | None = None) -> tuple[st
     the caller says how to reproduce it. Defaults to compile_scene.py's own
     scene_specs/*.yaml command (this function's only caller before from_eos.py existed),
     so existing callers that don't pass this keep getting identical output.
+
+    `out_dir` is where the caller will write env_cfg_py_text -- only used to write each
+    package asset's `usd_path` relative to it (see `_render_package_asset_class()`).
     """
     if regen_hint is None:
         regen_hint = (
@@ -505,7 +576,7 @@ def compile_scene(spec: SceneSpec, *, regen_hint: str | None = None) -> tuple[st
             f"scene_specs/{spec.name}.yaml"
         )
     catalog = load_catalog()
-    ctx = _build_context(spec, catalog)
+    ctx = _build_context(spec, catalog, out_dir)
     gripper_joint_names = _resolve_gripper_joint_names(ctx)
 
     # Order matters here: several calls below add to ctx.semantics_imports/action_imports
@@ -540,6 +611,7 @@ def compile_scene(spec: SceneSpec, *, regen_hint: str | None = None) -> tuple[st
         scene_name=spec.name,
         regen_hint=regen_hint,
         imports="\n".join(import_lines),
+        package_asset_classes="\n\n\n".join(ctx.package_class_defs.values()),
         event_cfg_body=_render_event_cfg_body(spec),
         has_policy_group=bool(policy_group_body),
         policy_group_body=policy_group_body,
