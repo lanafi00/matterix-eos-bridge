@@ -68,108 +68,31 @@ else:
         fail("baseline run_workflow() call failed -- fix this before testing the bridge", e)
 
 
-# --- Stage 1: protocol_registry.py's protocol-keyed API resolves correctly. Nothing
-# generates protocol-keyed registrations anymore (schema/from_eos.py emits lab-keyed ones,
-# see Stage 3), so register this repo's exp1/exp3 test scenes in-process here -- this
-# driver process only, which is all Stages 1-2 need. Stages 8-9 run inside a Ray actor
-# (a separate process that only sees discovered matterix_registrations.py files), so
-# those use EOS's beaker_lab package instead.
-stage("Stage 1: protocol_registry.resolve_matterix_call")
+# --- Stage 1: EOS (lab, task) -> Matterix (gym id, workflow) naming convention -- what
+# run_matterix_workflow(lab=) resolves through (matterix_backend._resolve()). No registry:
+# the gym id must be the one from_eos.py actually registered EOS's beaker_lab scene under,
+# so check it against that generated scene's own __init__.py, not just a hardcoded string.
+stage("Stage 1: lab/task naming convention (matterix_backend._resolve)")
 try:
-    from user.matterix_bridge.common.protocol_registry import (
-        register_protocol,
-        register_task_workflow,
-        resolve_matterix_call,
-    )
+    from user.matterix_bridge.common.matterix_backend import _resolve
+    from user.matterix_bridge.common.runtime import _eos_path
 
-    register_protocol("beaker_pick_protocol", "Matterix-Experiment-Beaker-Pick-Franka-v1")
-    register_protocol("heater_transfer_protocol", "Matterix-Experiment-Heater-Transfer-Franka-v1")
-    register_task_workflow("beaker_pick_protocol", "pick_beaker", "pickup_beaker")
-    for task_name in ("turn_on_heater", "pick_beaker", "place_beaker", "wait_for_heat_transfer", "turn_off_heater"):
-        register_task_workflow("heater_transfer_protocol", task_name)
-
-    task, workflow = resolve_matterix_call("heater_transfer_protocol", "turn_on_heater")
-    expected = ("Matterix-Experiment-Heater-Transfer-Franka-v1", "turn_on_heater")
-    assert (task, workflow) == expected, f"got {(task, workflow)}, expected {expected}"
-    ok(f"resolved to {(task, workflow)}")
-
-    try:
-        resolve_matterix_call("nonexistent_protocol", "x")
-        fail("expected KeyError for unregistered protocol_type, got none")
-    except KeyError:
-        ok("KeyError correctly raised for unregistered protocol_type")
-except Exception as e:
-    fail("protocol_registry import/resolution failed", e)
-
-
-# --- Stage 2: resolve_matterix_call_by_task_name -- the no-protocol_type-needed path
-# devices actually use now (see run_matterix_workflow()/Heater.heat_to()). Covers both
-# the common unambiguous case and the genuinely-ambiguous case, which should fail loudly
-# naming every colliding protocol rather than silently picking one.
-stage("Stage 2: protocol_registry.resolve_matterix_call_by_task_name")
-try:
-    from user.matterix_bridge.common.protocol_registry import resolve_matterix_call_by_task_name
-
-    task, workflow = resolve_matterix_call_by_task_name("turn_on_heater")
-    expected = ("Matterix-Experiment-Heater-Transfer-Franka-v1", "turn_on_heater")
-    assert (task, workflow) == expected, f"got {(task, workflow)}, expected {expected}"
-    ok(f"resolved 'turn_on_heater' unambiguously to {(task, workflow)}, no protocol_type needed")
-
-    try:
-        resolve_matterix_call_by_task_name("pick_beaker")
-        fail("expected ValueError for ambiguous task name 'pick_beaker', got none")
-    except ValueError as e:
-        # "pick_beaker" is genuinely registered under both beaker_pick_protocol AND
-        # heater_transfer_protocol with two different results -- confirm the error
-        # actually names the collision, not just that *a* ValueError happened.
-        msg = str(e)
-        assert "beaker_pick_protocol" in msg and "heater_transfer_protocol" in msg, (
-            f"ValueError didn't name the colliding protocols: {msg}"
-        )
-        ok("ValueError correctly raised for ambiguous 'pick_beaker', naming the colliding protocols")
-
-    try:
-        resolve_matterix_call_by_task_name("no_such_task_at_all")
-        fail("expected KeyError for a task name registered under no protocol, got none")
-    except KeyError:
-        ok("KeyError correctly raised for a task name registered under no protocol")
-except Exception as e:
-    fail("resolve_matterix_call_by_task_name failed", e)
-
-
-# --- Stage 3: the lab-keyed API device drivers actually use (run_matterix_workflow(lab=)),
-# against EOS's beaker_lab package's from_eos.py-generated matterix_registrations.py --
-# which only gets there via _discover_registrations(), so this also covers discovery.
-stage("Stage 3: lab-keyed registry (discovery, resolve_matterix_call_by_lab)")
-try:
-    from user.matterix_bridge.common.protocol_registry import (
-        get_lab_task_workflows,
-        get_lab_twins,
-        resolve_matterix_call_by_lab,
-    )
-
-    twins = get_lab_twins()
-    workflows = get_lab_task_workflows()
-    assert "beaker_lab" in twins, f"expected beaker_lab (discovered from EOS's user/beaker_lab) in {twins}"
-    ok(f"get_lab_twins() returned {len(twins)} lab(s), get_lab_task_workflows() returned {len(workflows)} task(s)")
-
-    task, workflow = resolve_matterix_call_by_lab("beaker_lab", "pick_beaker")
+    task, workflow = _resolve("beaker_lab", "pick_beaker")
     expected = ("Matterix-Lab-BeakerLab-v1", "pick_beaker")
     assert (task, workflow) == expected, f"got {(task, workflow)}, expected {expected}"
-    ok(f"resolved ('beaker_lab', 'pick_beaker') to {(task, workflow)} -- no collision with Stage 2's ambiguous name")
+    ok(f"resolved ('beaker_lab', 'pick_beaker') to {(task, workflow)}")
 
-    for args, what in ((("no_such_lab", "pick_beaker"), "unregistered lab"), (("beaker_lab", "turn_on_heater"), "task not in that lab")):
-        try:
-            resolve_matterix_call_by_lab(*args)
-            fail(f"expected KeyError for {what}, got none")
-        except KeyError:
-            ok(f"KeyError correctly raised for {what}")
+    scene_init = os.path.join(_eos_path(), "user", "beaker_lab", "scenes", "beaker_lab", "__init__.py")
+    with open(scene_init) as f:
+        scene_init_text = f.read()
+    assert task in scene_init_text, f"{scene_init} doesn't register {task!r} -- from_eos.py and _resolve() disagree"
+    ok(f"beaker_lab's generated scene registers {task!r}")
 except Exception as e:
-    fail("lab-keyed registry failed", e)
+    fail("lab/task naming convention failed", e)
 
 
-# --- Stage 4: the workflow_overrides mechanism -- the actual point of an earlier session's work.
-stage("Stage 4: workflow_overrides actually reaches TurnOnHeaterCfg.target_temperature")
+# --- Stage 2: the workflow_overrides mechanism -- the actual point of an earlier session's work.
+stage("Stage 2: workflow_overrides actually reaches TurnOnHeaterCfg.target_temperature")
 try:
     import user.matterix_bridge.common.runtime as rt
 
@@ -195,7 +118,7 @@ except Exception as e:
 
 
 # --- Stage 3: workflow_overrides error paths.
-stage("Stage 5: workflow_overrides error paths")
+stage("Stage 3: workflow_overrides error paths")
 try:
     try:
         run_workflow(
@@ -212,11 +135,11 @@ except Exception as e:
     fail("error-path check itself failed", e)
 
 
-# --- Stage 6: matterix_asset_types.py -- pure introspection/validation utilities,
+# --- Stage 4: matterix_asset_types.py -- pure introspection/validation utilities,
 # no registry (that layer was collapsed back into device_registry.py -- see its module
 # docstring). Covers discover_matterix_assets() finding every real asset category, and
 # validate_asset_cfg() accepting a real class / rejecting a fake one directly.
-stage("Stage 6: matterix_asset_types.discover_matterix_assets / validate_asset_cfg")
+stage("Stage 4: matterix_asset_types.discover_matterix_assets / validate_asset_cfg")
 try:
     from user.matterix_bridge.common.matterix_asset_types import (
         discover_matterix_assets,
@@ -250,10 +173,10 @@ except Exception as e:
     fail("matterix_asset_types discovery/validation failed", e)
 
 
-# --- Stage 7: device_registry.py -- DEVICE_TWINS stores classes directly (no catalog
+# --- Stage 5: device_registry.py -- DEVICE_TWINS stores classes directly (no catalog
 # indirection). Covers resolve_device_twin() resolving a real binding, a KeyError for an
 # unregistered device, and register_device_twin()'s own validation/conflict checks.
-stage("Stage 7: device_registry.register_device_twin / resolve_device_twin")
+stage("Stage 5: device_registry.register_device_twin / resolve_device_twin")
 try:
     from user.matterix_bridge.common.device_registry import register_device_twin, resolve_device_twin
     from matterix_assets.robots import FRANKA_PANDA_HIGH_PD_IK_CFG
@@ -294,8 +217,8 @@ except Exception as e:
     fail("device_registry resolution failed", e)
 
 
-# --- Stage 8: the MatterixBackend Ray actor, end to end.
-stage("Stage 8: MatterixBackend actor (get_backend, set_parameter, run_workflow)")
+# --- Stage 6: the MatterixBackend Ray actor, end to end.
+stage("Stage 6: MatterixBackend actor (get_backend, set_parameter, run_workflow)")
 try:
     import ray
 
@@ -321,23 +244,23 @@ except Exception as e:
     fail("MatterixBackend actor test failed", e)
 
 
-# --- Stage 9: set_parameters() (plural, batched) and run_matterix_workflow() (the
+# --- Stage 7: set_parameters() (plural, batched) and run_matterix_workflow() (the
 # get_backend/set_parameters/run_workflow/check-success wrapper device.py actually calls)
 # -- neither was exercised above, and both are what a real device driver uses now,
 # resolving by lab= exactly like beaker_lab's devices/arm/device.py.
-# Reuses Stage 7's "smoke_test_scope" (not a new scope_id) -- MatterixBackend actors are
+# Reuses Stage 6's "smoke_test_scope" (not a new scope_id) -- MatterixBackend actors are
 # lifetime="detached" and each distinct scope_id claims its own num_gpus=1, so a second
-# scope here would compete with Stage 7's still-alive actor for this machine's one GPU
+# scope here would compete with Stage 6's still-alive actor for this machine's one GPU
 # and hang in PENDING_CREATION rather than fail loudly (the idle-timeout sweep only frees
 # actors idle 15+ minutes, nowhere near this script's runtime).
-stage("Stage 9: set_parameters() batch setter and run_matterix_workflow() helper")
+stage("Stage 7: set_parameters() batch setter and run_matterix_workflow() helper")
 try:
     from user.matterix_bridge.common.matterix_backend import run_matterix_workflow
 
     # A field override in the call -- confirms set_parameters() (not just set_parameter())
     # actually gets exercised, and that lab= resolves correctly through the real Ray
-    # actor, not just the bare protocol_registry function Stage 3 tested. place_beaker
-    # right after Stage 8's pick_beaker on the same scope is beaker_lab_pick_and_place_
+    # actor, not just the bare _resolve() function Stage 1 tested. place_beaker
+    # right after Stage 6's pick_beaker on the same scope is beaker_lab_pick_and_place_
     # protocol's real sequence, and relies on the actor NOT resetting the scene between
     # calls (runtime.run_workflow's reset=False) -- otherwise it places with an empty
     # gripper. Success alone can't tell those apart (Matterix's place success is
@@ -350,7 +273,7 @@ try:
         headless=True,
         description="smoke test stage 9",
     )
-    ok(f"run_matterix_workflow(lab='beaker_lab') place_beaker after Stage 8's pick completed: success={result.success}")
+    ok(f"run_matterix_workflow(lab='beaker_lab') place_beaker after Stage 6's pick completed: success={result.success}")
 
     try:
         run_matterix_workflow("smoke_test_scope", "no_such_task_at_all", lab="beaker_lab", headless=True)
@@ -361,19 +284,19 @@ except Exception as e:
     fail("run_matterix_workflow()/set_parameters() test failed", e)
 
 
-# --- Stage 10: runtime._get_env() refuses to rebuild a second live environment in this
-# process (Stage 4 already built one, for a different task, in this same driver process --
-# not a Ray actor like Stages 8/9). VERIFIED (outside this script, via a faulthandler
+# --- Stage 8: runtime._get_env() refuses to rebuild a second live environment in this
+# process (Stage 2 already built one, for a different task, in this same driver process --
+# not a Ray actor like Stages 6/7). VERIFIED (outside this script, via a faulthandler
 # stack dump) that actually attempting this rebuild hangs indefinitely inside third-party
 # isaaclab code, not just errors -- see runtime.py's _get_env() docstring for the root
 # cause. This confirms the fail-fast guard fires immediately instead.
-stage("Stage 10: runtime._get_env() rejects an in-process task switch instead of hanging")
+stage("Stage 8: runtime._get_env() rejects an in-process task switch instead of hanging")
 try:
     from user.matterix_bridge.common.runtime import run_workflow
 
     try:
         run_workflow(
-            task="Matterix-Experiment-Beaker-Pick-Franka-v1",  # different from Stage 4's task
+            task="Matterix-Experiment-Beaker-Pick-Franka-v1",  # different from Stage 2's task
             workflow="pickup_beaker",
             print_progress=False,
         )
@@ -385,11 +308,11 @@ except Exception as e:
     fail("in-process task-switch guard test failed", e)
 
 
-# --- Stage 11: get_backend()'s GPU handoff. A NEW scope's actor kills other backend
-# actors that are idle right now (here: Stage 8-9's smoke_test_scope, which really holds
+# --- Stage 9: get_backend()'s GPU handoff. A NEW scope's actor kills other backend
+# actors that are idle right now (here: Stage 6-7's smoke_test_scope, which really holds
 # an Isaac Sim) and gets the GPU; a busy one is left alone and the new run raises a clear
 # RuntimeError within gpu_wait_s instead of hanging in PENDING_CREATION.
-stage("Stage 11: get_backend() frees the GPU from idle actors, fails fast on a busy one")
+stage("Stage 9: get_backend() frees the GPU from idle actors, fails fast on a busy one")
 try:
     import time
 

@@ -11,7 +11,7 @@ Bridges Matterix digital-twin simulation into EOS, for virtual commissioning of 
 
 ## Use from an EOS package
 
-- Generate a scene + registrations: `python -m schema.from_eos <your_package>`
+- Generate a scene per lab: `python -m schema.from_eos <your_package>`. Devices resolve it by naming convention (`schema/naming.py`), nothing to register.
 - Device drivers call `run_matterix_workflow(...)` from `common/matterix_backend.py` when `backend == "sim"`.
 
 See `schema/models.py` for the full schema.

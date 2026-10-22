@@ -12,9 +12,8 @@ independently of any particular scene: a scene's slots (e.g. "robot" in
   import scene modules first.
 - Editing which physical devices exist never means touching a scene file, and vice versa.
 
-Auto-imported by `runtime.py`'s `_discover_device_registrations()`, once per process --
-matches the naming convention of the pre-boot `matterix_registrations.py` (a plain file
-at your package's root), but this one runs *after* Isaac Sim has booted, since
+Auto-imported by `runtime.py`'s `_discover_device_registrations()`, once per process
+(a plain file at your package's root, found by name), *after* Isaac Sim has booted, since
 registering a device twin needs a real `matterix_assets` class (see
 `matterix_asset_types.py`'s docstring for why). Runs after scenes are discovered, not
 before, despite devices being conceptually independent of scenes -- see the comment at

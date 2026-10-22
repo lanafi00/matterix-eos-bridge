@@ -24,7 +24,8 @@ schema-scope examples never actually booted by any test, exp4 additionally a kno
 `eos/user/beaker_lab` -- and are picked up the same way, via
 `_discover_scene_modules()`'s auto-walk, no listing needed below.)
 
-Their env ids are what protocol_registry.py's PROTOCOL_TWINS maps EOS protocol types onto.
+Their env ids are used directly (`runtime.run_workflow(task=...)`, smoke_test.py/vnc_test.py),
+not through any EOS lab -- EOS-facing scenes are the from_eos.py-generated ones.
 
 Catalog assets and device twins are NOT registered here -- see the package-root
 `matterix_devices.py` instead (`common/runtime.py`'s `_discover_device_registrations()`,

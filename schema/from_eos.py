@@ -1,5 +1,5 @@
-"""CLI: generate an EOS package's Matterix scene(s) + matterix_registrations.py directly
-from its own lab.yml + protocol.yml files. The only way to build a SceneSpec.
+"""CLI: generate an EOS package's Matterix scene(s) directly from its own lab.yml +
+protocol.yml files. The only way to build a SceneSpec.
 See README.md's "Using this from your own EOS package" for the authoring convention this
 implements.
 
@@ -30,18 +30,18 @@ Which scene container an asset goes in (`articulated_assets` vs `objects`) comes
 its catalog entry, not from whether lab.yml lists it as a device or a resource -- an EOS
 device can just as well be a rigid object in the scene (a hotplate, a spectrometer).
 
-Registrations are keyed by lab, not protocol (`register_lab()`/
-`register_lab_task_workflow()` -- see common/protocol_registry.py): one scene per lab,
-and every protocol's `matterix:` tasks in that lab merged into its bindings. A device
-driver then resolves with its own `self.lab_name`, never a hardcoded protocol type.
+One scene per lab, not per protocol: every protocol's `matterix:` tasks in that lab are
+merged into its `workflows`. Nothing is registered -- a device driver's `(self.lab_name,
+task name)` resolves by naming convention (schema/naming.py's `lab_gym_id()`, workflow
+key = task name), the same convention this module names the scene with.
 
 Reuses EOS's own LabDef/ProtocolDef parsers (not a hand-rolled reimplementation), so this
 stays in sync with whatever lab.yml/protocol.yml actually accept. Safe to do only because
 this module is meant to run from EOS's own venv (same one `eos start` uses) -- it is
-NOT imported at runtime by runtime.py/protocol_registry.py,
+NOT imported at runtime by runtime.py/matterix_backend.py,
 which deliberately avoid eos.configuration.entities so they stay importable in a plain
-isaaclab conda env with no `eos`/`bofire` installed at all (see protocol_registry.py's
-`_discover_registrations()` docstring). from_eos.py is an offline, dev-time tool -- it
+isaaclab conda env with no `eos`/`bofire` installed at all (see runtime.py's
+`_discover_user_package_dirs()` docstring). from_eos.py is an offline, dev-time tool -- it
 never runs inside a MatterixBackend actor.
 
 Needs no isaaclab/matterix/Isaac Sim -- validates before paying the 1-2 minute Isaac Sim
@@ -67,6 +67,7 @@ from eos.configuration.entities.protocol_def import ProtocolDef
 from .catalog import load_catalog
 from .compiler import compile_scene
 from .models import AssetSpec, SceneSpec, WorkflowStep
+from .naming import lab_gym_id
 from .package_assets import load_package_assets
 
 _ARTICULATED = "articulated"
@@ -74,10 +75,6 @@ _ARTICULATED = "articulated"
 # Fields AssetSpec accepts besides `kind`/`catalog`, read straight off a device/resource's
 # merged `meta` dict when present.
 _ASSET_META_FIELDS = ("pos", "rot", "mass", "semantics", "randomize_position", "randomize_temperature")
-
-
-def _pascal(name: str) -> str:
-    return "".join(word.capitalize() for word in name.replace("-", "_").split("_"))
 
 
 def _asset_from_meta(meta: dict[str, Any], *, kinds: dict[str, str], context: str) -> AssetSpec | None:
@@ -140,22 +137,21 @@ def _load_matterix_tasks(protocol_yml: Path) -> tuple[ProtocolDef, dict[str, Wor
     return protocol, steps
 
 
-def compile_lab(lab_dir: Path, package_dir: Path, scenes_dir: Path) -> tuple[SceneSpec, dict[str, str]]:
+def compile_lab(lab_dir: Path, package_dir: Path, scenes_dir: Path) -> SceneSpec:
     """Build + compile one lab's scene from its lab.yml, folding in every workflow
-    binding contributed by the package's protocols that reference this lab. Returns the
-    compiled spec plus this lab's `{task_name: workflow_key}` bindings, merged across
-    those protocols (always identity -- a task's workflow key is its own name).
+    contributed by the package's protocols that reference this lab. Returns the compiled
+    spec.
 
     Raises ValueError if two protocols in this lab give the same EOS task name different
-    `matterix:` blocks -- registrations are keyed by (lab, task name), so that would be
-    genuinely ambiguous at runtime.
+    `matterix:` blocks -- a workflow is keyed by task name within the lab's one scene, so
+    that would be genuinely ambiguous at runtime.
     """
     lab = LabDef(**yaml.safe_load((lab_dir / "lab.yml").read_text()))
     package_assets = load_package_assets(package_dir)
     kinds = {key: entry["kind"] for key, entry in load_catalog().assets.items()}
     kinds.update({key: asset.catalog_entry()["kind"] for key, asset in package_assets.items()})
     assets = _build_assets(lab, kinds)
-    gym_id = f"Matterix-Lab-{_pascal(lab.name)}-v1"
+    gym_id = lab_gym_id(lab.name)
 
     workflows: dict[str, WorkflowStep] = {}
     sources: dict[str, Path] = {}
@@ -168,8 +164,8 @@ def compile_lab(lab_dir: Path, package_dir: Path, scenes_dir: Path) -> tuple[Sce
             if task_name in workflows and workflows[task_name] != step:
                 raise ValueError(
                     f"task {task_name!r} in lab {lab.name!r} has a different matterix block in "
-                    f"{protocol_yml} than in {sources[task_name]} -- registrations are keyed "
-                    "by (lab, task name), so both protocols must agree"
+                    f"{protocol_yml} than in {sources[task_name]} -- a workflow is keyed "
+                    "by task name within the lab's scene, so both protocols must agree"
                 )
             workflows[task_name] = step
             sources[task_name] = protocol_yml
@@ -194,47 +190,17 @@ def compile_lab(lab_dir: Path, package_dir: Path, scenes_dir: Path) -> tuple[Sce
     (out_dir / f"{spec.name}_env_cfg.py").write_text(env_cfg_text)
     (out_dir / "__init__.py").write_text(init_text)
 
-    return spec, {task_name: task_name for task_name in workflows}
-
-
-def _render_registrations(labs: list[tuple[str, str, dict[str, str]]]) -> str:
-    """`labs` is `[(lab_name, gym_id, {task_name: workflow_key}), ...]`."""
-    lines = [
-        '"""Generated by `python -m schema.from_eos` -- DO NOT EDIT BY HAND.',
-        "",
-        "Regenerate after editing any labs/*/lab.yml or a protocols/*/protocol.yml matterix: block",
-        "in this package (run from matterix_bridge's own repo root -- see schema/from_eos.py):",
-        "    python -m schema.from_eos <this package's root>",
-        '"""',
-        "",
-        "from user.matterix_bridge.common.protocol_registry import register_lab, register_lab_task_workflow",
-    ]
-    for lab_name, gym_id, task_workflows in sorted(labs, key=lambda lab: lab[0]):
-        lines.append("")
-        lines.append(f"register_lab({lab_name!r}, {gym_id!r})")
-        for task_name, workflow_key in sorted(task_workflows.items()):
-            if workflow_key == task_name:
-                lines.append(f"register_lab_task_workflow({lab_name!r}, {task_name!r})")
-            else:
-                lines.append(f"register_lab_task_workflow({lab_name!r}, {task_name!r}, {workflow_key!r})")
-    lines.append("")
-    return "\n".join(lines)
+    return spec
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("package_dir", help="Path to an EOS package root (sibling of its own pyproject.toml)")
     parser.add_argument("--scenes-dir", default=None, help="default: <package_dir>/scenes")
-    parser.add_argument(
-        "--registrations-out", default=None, help="default: <package_dir>/matterix_registrations.py"
-    )
     args = parser.parse_args(argv)
 
     package_dir = Path(args.package_dir)
     scenes_dir = Path(args.scenes_dir) if args.scenes_dir else package_dir / "scenes"
-    registrations_out = (
-        Path(args.registrations_out) if args.registrations_out else package_dir / "matterix_registrations.py"
-    )
 
     labs_dir = package_dir / "labs"
     lab_dirs = sorted(p.parent for p in labs_dir.glob("*/lab.yml")) if labs_dir.is_dir() else []
@@ -242,12 +208,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[from_eos] no labs/*/lab.yml found under {package_dir}", file=sys.stderr)
         return 1
 
-    lab_bindings: list[tuple[str, str, dict[str, str]]] = []
-
     try:
         for lab_dir in lab_dirs:
-            spec, task_workflows = compile_lab(lab_dir, package_dir, scenes_dir)
-            lab_bindings.append((spec.name, spec.gym_id, task_workflows))
+            spec = compile_lab(lab_dir, package_dir, scenes_dir)
             print(f"[from_eos] wrote {scenes_dir / spec.name}/ ({spec.name}_env_cfg.py, __init__.py)")
     except (ValidationError, ValueError) as e:
         print(f"[from_eos] {e}", file=sys.stderr)
@@ -268,8 +231,6 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"[from_eos] created {parent_init} (first scene in this package)")
 
-    registrations_out.write_text(_render_registrations(lab_bindings))
-    print(f"[from_eos] wrote {registrations_out}")
     return 0
 
 

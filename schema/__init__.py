@@ -22,12 +22,11 @@ from_eos.py builds the SceneSpec; compiler.py renders it.
     compiler.py     - SceneSpec -> rendered `*_env_cfg.py` + `__init__.py` text.
     from_eos.py     - CLI: an EOS package's root -> read its labs/*/lab.yml + each
                         protocol.yml task's matterix: block -> assemble a SceneSpec -> render
-                        and write into <package>/scenes/<name>/, plus a generated
-                        matterix_registrations.py.
+                        and write into <package>/scenes/<name>/.
                         The only module here that imports anything from `eos` itself
                         (`eos.configuration.entities`, for its LabDef/ProtocolDef parsers)
                         -- still no isaaclab/matterix/matterix_sm, but meant to run from
                         EOS's own venv, not the bare-isaaclab conda env runtime.py/
-                        protocol_registry.py stay importable from (see from_eos.py's own
+                        matterix_backend.py stay importable from (see from_eos.py's own
                         docstring).
 """

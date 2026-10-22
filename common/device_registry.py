@@ -39,8 +39,7 @@ devices are registered once and then placed into any number of scenes.
 after Isaac Sim has booted (needed to validate real `matterix_assets` classes, via
 `matterix_asset_types.py`'s `validate_asset_cfg()`) - see that function's docstring for
 why it's called after scene discovery specifically (a matterix_assets-internal circular
-import, not a design choice here), and `protocol_registry.py`'s docstring for why this
-can't go in the pre-boot `matterix_registrations.py`.
+import, not a design choice here).
 """
 
 from __future__ import annotations

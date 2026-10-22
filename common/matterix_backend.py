@@ -3,8 +3,8 @@ protocol run (or campaign). Every sim-mode device driver gets or creates this SA
 via get_backend(scope_id) -- Isaac Sim boots once per scope_id, not once per device, and
 every device acts on the one shared scene instead of a private, disconnected copy of it.
 
-EOS lab/task -> Matterix task/workflow resolution lives in protocol_registry.py;
-EOS device -> Matterix twin resolution lives in device_registry.py (consumed internally by
+EOS lab/task -> Matterix task/workflow resolution is a naming convention (`_resolve()`
+below); EOS device -> Matterix twin resolution lives in device_registry.py (consumed internally by
 run_workflow()'s `devices=` param). This actor is just a persistent process wrapping
 run_workflow() (a sibling module, runtime.py) so Isaac Sim's boot cost is paid once per
 scope_id, not once per call.
@@ -12,8 +12,7 @@ scope_id, not once per call.
 Parameter registry: a workflow's own config fields (e.g. TurnOnHeaterCfg's
 target_temperature) are fixed at env_cfg authoring time -- there's no way for an EOS
 task's dynamic parameter to reach Matterix without one. `set_parameters` stores
-{field: value} overrides here, keyed by the resolved Matterix workflow key (not the EOS
-task name -- see protocol_registry.py's docstring on why those aren't assumed equal);
+{field: value} overrides here, keyed by the resolved Matterix workflow key (the EOS task name -- see `_resolve()`);
 `run_workflow` passes the current values for that workflow key as `workflow_overrides` on
 every call. Because `env_cfg` is a live object cached across calls inside runtime.py
 (workflow_value = env_cfg.workflows[workflow] is read fresh on every run_workflow() call,
@@ -53,11 +52,14 @@ _BUSY_PROBE_S = 5.0
 
 def _resolve(lab: str, eos_task_name: str) -> tuple[str, str]:
     """Resolve an EOS task, as run in `lab`, to its Matterix (gym_task_id, workflow_key)
-    pair -- see `protocol_registry.py`'s `resolve_matterix_call_by_lab()`.
+    pair: the scene `python -m schema.from_eos` generated for that lab
+    (schema/naming.py's `lab_gym_id()`), and the workflow named after the task. Nothing
+    is looked up here -- an unknown lab or task fails in runtime.py once the scene is
+    needed (`_get_env()` / `run_workflow()`), naming what's actually available.
     """
-    from user.matterix_bridge.common.protocol_registry import resolve_matterix_call_by_lab
+    from user.matterix_bridge.schema.naming import lab_gym_id
 
-    return resolve_matterix_call_by_lab(lab, eos_task_name)
+    return lab_gym_id(lab), eos_task_name
 
 
 @ray.remote
@@ -377,7 +379,7 @@ def run_matterix_workflow(
 
     lab: the calling device's own lab -- pass `self.lab_name` (EOS's BaseDevice exposes
     it). Together with `eos_task_name` it picks the Matterix scene and workflow (see
-    protocol_registry.py's `resolve_matterix_call_by_lab()`), so nothing about the
+    `_resolve()`), so nothing about the
     calling protocol needs to be known or hardcoded.
 
     fields: the workflow's dynamic parameter overrides (e.g. target_temperature=350.0),

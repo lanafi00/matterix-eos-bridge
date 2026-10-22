@@ -36,7 +36,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
 # Kwargs for the atomic steps also used, unchanged, inside "pickup_and_place" below (a bundled
-# convenience workflow for manual/dev CLI use, never reached through protocol_registry.py -- see
+# convenience workflow for manual/dev CLI use, never reached from an EOS task -- see
 # its own comment). Module-level, not class attributes: `@configclass` turns every non-dunder
 # class attribute into a config field, so these live outside HeaterTransferEnvCfg's body and get
 # passed to a fresh Cfg() call at each use, rather than sharing one mutable instance between the
@@ -166,7 +166,7 @@ class HeaterTransferEnvCfg(MatterixBaseEnvCfg):
 
     workflows = {
         # Atomic, one entry per EOS DAG task node - what an EOS-facing caller dispatches
-        # one at a time (see matterix_bridge/common/protocol_registry.py).
+        # one at a time (keyed by EOS task name -- see common/matterix_backend.py's _resolve()).
         "turn_on_heater": TurnOnHeaterCfg(**_TURN_ON_HEATER_KWARGS),
         "pick_beaker": PickObjectCfg(**_PICK_BEAKER_KWARGS),
         "place_beaker": PlaceObjectCfg(**_PLACE_BEAKER_KWARGS),

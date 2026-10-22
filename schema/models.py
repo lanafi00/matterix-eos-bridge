@@ -140,18 +140,17 @@ class SceneSpec(BaseModel):
     """Used for the generated directory name (scenes/<name>/) and the env cfg class name."""
 
     gym_id: str
-    """The Gym env id workflows/protocol_registry.py's PROTOCOL_TWINS will map an EOS
-    protocol type onto -- e.g. "Matterix-Experiment-Beaker-Pick-Generated-v1"."""
+    """The Gym env id the scene registers under -- from_eos.py derives it from the lab name
+    (schema/naming.py's `lab_gym_id()`), which is how a device's lab finds this scene."""
 
     env_spacing: float = 5.0
     episode_length_s: float | None = None
 
     assets: dict[str, AssetSpec]
     workflows: dict[str, WorkflowStep]
-    """Atomic entries -- one per EOS DAG task node, what protocol_registry.py's
-    TASK_WORKFLOWS is meant to resolve to (see common/protocol_registry.py). This schema
-    doesn't register those bindings itself -- that's an EOS package's own
-    matterix_registrations.py concern (see README.md), out of scope here."""
+    """One entry per EOS DAG task node, keyed by the EOS task name -- the key a device's
+    `run_matterix_workflow(eos_task_name, lab=...)` call resolves to (see
+    common/matterix_backend.py's `_resolve()`)."""
 
     package_assets: dict[str, PackageAssetDef] = Field(default_factory=dict)
     """Assets an EOS package ships itself (`<package>/assets/assets.yml`, keyed
