@@ -2,6 +2,8 @@
 
 Bridges Matterix digital-twin simulation into EOS, for virtual commissioning of lab protocols before running on real hardware.
 
+**Demo:** [Watch the demo video](https://drive.google.com/file/d/1FrpNpmP2UVgHbLQWC0ydbVlqUW_u9biB/view?usp=sharing)
+
 ## Install
 
 1. Install `matterix`, `matterix_assets`, `matterix_sm`, `matterix_tasks` (editable) into a conda env that has Isaac Lab.
