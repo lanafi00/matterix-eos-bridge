@@ -1,18 +1,13 @@
 """The scene schema itself: SceneSpec (top level) / AssetSpec / WorkflowStep /
-SemanticsSpec / BundleStep / PositionRandomization / TemperatureRandomization.
+SemanticsSpec / PositionRandomization / TemperatureRandomization.
 
-This is what a scene_specs/*.yaml file parses into, and what a drag-and-drop UI or an
-LLM's structured output should target (`SceneSpec.model_json_schema()` gives you the JSON
-Schema for that) -- see schema/__init__.py's docstring and CLAUDE.md for the full
-rationale.
-
-`schema/from_eos.py` is the alternate compiler entry point: it builds a full `SceneSpec`
-directly from an EOS package's `lab.yml` + the `matterix:` block on each of its protocols'
-tasks (each parsed as a `WorkflowStep`), instead of a hand-authored scene_specs/*.yaml.
+`schema/from_eos.py` builds a `SceneSpec` directly from an EOS package's `lab.yml` + the
+`matterix:` block on each of its protocols' tasks (each parsed as a `WorkflowStep`) -- see
+schema/__init__.py's docstring and CLAUDE.md for the full rationale.
 
 Scope (v3 -- see CLAUDE.md's rollout plan): covers what exp1_beaker_pick,
 exp3_heater_transfer, and exp4_dual_arm_handoff all need -- asset placement, position/
-temperature randomization, plain and composite (bundled) workflow steps, per-asset and
+temperature randomization, workflow steps, per-asset and
 global semantics, and multi-agent scenes (more than one articulated asset). `agent_assets`
 is validated to actually name an articulated asset (not just any declared slot) -- see
 `_validate_step` below -- since compiler.py resolves each step's action_space_info from
@@ -23,9 +18,8 @@ structural mistakes (wrong type, missing required key) for free; the `_validate_
 model_validator below catches everything that needs catalog.json (see catalog.py) --
 unknown asset/action/semantics names, an asset's `kind` not matching what the catalog
 says, an action or semantics param naming a field that doesn't exist, a workflow step's
-agent_assets/object/target naming an asset slot this scene never declared, or a bundle
-step's `ref` naming something other than a declared atomic workflow. Neither tier boots
-Isaac Sim.
+agent_assets/object/target naming an asset slot this scene never declared. Neither tier
+boots Isaac Sim.
 
 One deliberate gap, not a bug (unchanged from v1): field-name validation for action/
 semantics params, not catalog-reported "required" enforcement -- see the v1 docstring this
@@ -140,35 +134,6 @@ class WorkflowStep(BaseModel):
     action-space constant that's really a property of that robot."""
 
 
-class BundleStep(BaseModel):
-    """One step inside a bundle's ordered list (see SceneSpec.bundles) -- either a
-    reference to an already-declared atomic `workflows` entry (`ref`), or a fresh,
-    bundle-only step (`action`/`params`, same shape as WorkflowStep). Exactly one form,
-    never both -- see `_check_shape` below.
-
-    Compiling a `ref` step reuses the SAME kwargs the referenced atomic entry uses (as a
-    module-level constant compiler.py emits once, shared between the atomic dict entry and
-    every bundle that refs it) rather than a second, independently-typed copy -- this is
-    exactly the hand-fix already applied to exp3_heater_transfer/exp4_dual_arm_handoff
-    (see that commit): two copies of the same literal params can silently drift, and
-    `workflow_overrides` (runtime.run_workflow) mutates a workflow's Cfg instance in place,
-    keyed by name, so two entries built from the SAME instance (not two equal-valued ones)
-    is what keeps an override on the atomic entry from leaking into the bundle, or vice
-    versa. See compiler.py's `compile_scene()` for where these constants get built.
-    """
-
-    ref: str | None = None
-    action: str | None = None
-    params: dict[str, Any] = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def _check_shape(self) -> "BundleStep":
-        if (self.ref is None) == (self.action is None):
-            raise ValueError("BundleStep must set exactly one of 'ref' or 'action', not both or neither")
-        if self.ref is not None and self.params:
-            raise ValueError("BundleStep with 'ref' set takes no 'params' -- it reuses the referenced step's own")
-        return self
-
 
 class SceneSpec(BaseModel):
     name: str
@@ -188,13 +153,6 @@ class SceneSpec(BaseModel):
     doesn't register those bindings itself -- that's an EOS package's own
     matterix_registrations.py concern (see README.md), out of scope here."""
 
-    bundles: dict[str, list[BundleStep]] = Field(default_factory=dict)
-    """Composite, dev-CLI-only workflow sequences (matching exp3's "pickup_and_place"/
-    "observe_heating" pattern) -- never reached through protocol_registry.py. Compiled into
-    the SAME `workflows` dict as the atomic entries (that's genuinely where Matterix looks
-    for them -- see runtime.run_workflow's `workflow` param), just as a list value instead
-    of a single Cfg call."""
-
     package_assets: dict[str, PackageAssetDef] = Field(default_factory=dict)
     """Assets an EOS package ships itself (`<package>/assets/assets.yml`, keyed
     "<package>/<asset>" -- see package_assets.py). An `AssetSpec.catalog` naming one of
@@ -208,7 +166,7 @@ class SceneSpec(BaseModel):
 
     @model_validator(mode="after")
     def _validate_identifiers(self) -> "SceneSpec":
-        """`name`, every asset slot key, and every workflow/bundle key get spliced
+        """`name`, every asset slot key, and every workflow key get spliced
         directly into Python identifiers by compiler.py -- not just the env cfg class
         name (from `name`) and the `_X_KWARGS` module-level constants (from a workflow
         key), but bare attribute names built from an ASSET slot too: an EventTerm named
@@ -218,7 +176,7 @@ class SceneSpec(BaseModel):
         (_render_rigid_objects_group) are all real Python attribute assignments, not
         quoted strings. A name that isn't a valid identifier (a space, a hyphen -- easy to
         write in YAML, invalid in all of these) would otherwise write a `*_env_cfg.py`
-        file with a SyntaxError straight to disk, uncaught by compile_scene.py (which
+        file with a SyntaxError straight to disk, uncaught by from_eos.py (which
         never tries to import what it writes) -- surfacing only when Isaac Sim imports it
         later, after paying the exact 1-2 minute boot cost this schema exists to avoid.
         VERIFIED live: `name: my-bad-scene` produced `class My-bad-sceneEnvCfg(...):`,
@@ -239,23 +197,6 @@ class SceneSpec(BaseModel):
             check(slot, f"assets key {slot!r}")
         for wf_name in self.workflows:
             check(wf_name, f"workflows key {wf_name!r}")
-        for bundle_name in self.bundles:
-            check(bundle_name, f"bundles key {bundle_name!r}")
-
-        collisions = set(self.workflows) & set(self.bundles)
-        if collisions:
-            # Both compile into the SAME Python `workflows = {...}` dict literal
-            # (compiler.py's compile_scene()) -- a name used in both silently produces a
-            # duplicate dict key, and Python keeps only the LAST one with no error at all
-            # (not even a SyntaxError) -- the bundle (a list) would silently replace the
-            # atomic entry (a single Cfg), corrupting whichever EOS task expects the
-            # atomic one. VERIFIED live: reproduced exactly this duplicate-key output.
-            errors.append(
-                f"workflows and bundles share name(s) {sorted(collisions)} -- both compile "
-                "into the same workflows dict; a shared name would silently make the "
-                "bundle overwrite the atomic entry with no error. Rename one."
-            )
-
         if errors:
             raise ValueError("\n  - " + "\n  - ".join(errors))
         return self
@@ -392,18 +333,6 @@ class SceneSpec(BaseModel):
 
         for wf_name, step in self.workflows.items():
             self._validate_step(step.action, step.params, catalog, f"workflows.{wf_name}", errors)
-
-        for bundle_name, steps in self.bundles.items():
-            for i, bstep in enumerate(steps):
-                context = f"bundles.{bundle_name}[{i}]"
-                if bstep.ref is not None:
-                    if bstep.ref not in self.workflows:
-                        errors.append(
-                            f"{context}.ref: {bstep.ref!r} isn't a declared atomic "
-                            f"workflows entry. Known: {sorted(self.workflows)}"
-                        )
-                else:
-                    self._validate_step(bstep.action, bstep.params, catalog, context, errors)
 
         if errors:
             raise ValueError("\n  - " + "\n  - ".join(errors))

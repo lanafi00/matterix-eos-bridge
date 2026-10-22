@@ -15,9 +15,8 @@ get wrong, and it's a place with normal Python tooling (not template whitespace 
 
 Covers what exp1_beaker_pick, exp3_heater_transfer, and exp4_dual_arm_handoff need (see
 models.py's docstring for the same scope note): pick_object/place_object-shaped workflow
-steps, per-asset and global semantics, position/temperature randomization, bundled
-(composite) workflows built from refs to atomic entries, and multi-agent scenes (more than
-one articulated asset, each step's action_space_info resolved from ITS OWN agent_assets,
+steps, per-asset and global semantics, position/temperature randomization, and
+multi-agent scenes (more than one articulated asset, each step's action_space_info resolved from ITS OWN agent_assets,
 not one scene-wide "primary" robot -- see `_resolve_step_kwargs()`).
 
 `compile_scene()` at the bottom is the one entry point; everything else is a small,
@@ -36,7 +35,7 @@ from pathlib import Path
 import jinja2
 
 from .catalog import Catalog, load_catalog
-from .models import AssetSpec, BundleStep, SceneSpec, SemanticsSpec, WorkflowStep
+from .models import AssetSpec, SceneSpec, SemanticsSpec
 from .package_assets import PackageAssetDef
 from .robot_metadata import RobotMetadata, get_robot_metadata
 
@@ -44,7 +43,6 @@ _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
 _INDENT1 = "    "  # one level: class body
 _INDENT2 = "        "  # two levels: class body -> nested class/dict body
-_INDENT3 = "            "  # three levels: dict body -> list value -> list item
 
 
 class CompileError(ValueError):
@@ -87,10 +85,6 @@ def _snake_to_pascal(name: str) -> str:
 
 def _class_name_for(spec: SceneSpec) -> str:
     return _snake_to_pascal(spec.name) + "EnvCfg"
-
-
-def _kwargs_const_name(wf_name: str) -> str:
-    return f"_{wf_name.upper()}_KWARGS"
 
 
 def _render_kwarg(key: str, value) -> str:
@@ -355,9 +349,8 @@ def _render_policy_group(ctx: _CompileContext) -> str:
 
 
 def _resolve_step_kwargs(action: str, params: dict, ctx: _CompileContext) -> tuple[str, str]:
-    """(class_name, rendered_kwargs_string) for one action+params pair. Injects
-    action_space_info the same way for every step (atomic, bundle-inline, or the shared
-    dict a bundle `ref` reuses) -- one place for this rule, not copy-pasted per caller.
+    """(class_name, rendered_kwargs_string) for one action+params pair, with
+    action_space_info injected.
 
     Resolved from THIS STEP's own `agent_assets` (the first named slot, if it's a list),
     not one scene-wide "primary" robot -- a multi-agent scene (e.g. exp4_dual_arm_handoff's
@@ -376,38 +369,6 @@ def _resolve_step_kwargs(action: str, params: dict, ctx: _CompileContext) -> tup
         kwargs["action_space_info"] = ctx.robot_meta_by_slot[first_agent].action_space_const
     rendered = ", ".join(_render_kwarg(k, v) for k, v in kwargs.items())
     return class_name, rendered
-
-
-def _render_step_call(action: str, params: dict, ctx: _CompileContext, *, const_name: str | None) -> tuple[str, str | None]:
-    """The single `Cls(...)` text for one action+params pair, plus (only when `const_name`
-    is given) the `const_name = dict(...)` line it should be paired with.
-
-    `const_name` given: renders `Cls(**const_name)` and returns the matching `const_name =
-    dict(kwargs)` line as well, for the caller to place once at module level -- used for
-    an atomic entry a bundle `ref`s (see BundleStep's docstring for why the atomic dict
-    entry and every bundle that refs it must share, not duplicate, the same kwargs).
-    `const_name` omitted (None): renders `Cls(kwargs)` inline, second return value None --
-    used for a plain atomic entry, a bundle-inline step, and (again, discarding the
-    duplicate const line) a bundle step that `ref`s an atomic entry which already emitted
-    its own const line when `spec.workflows` was processed.
-    """
-    cls_name, rendered_kwargs = _resolve_step_kwargs(action, params, ctx)
-    if const_name is not None:
-        return f"{cls_name}(**{const_name})", f"{const_name} = dict({rendered_kwargs})"
-    return f"{cls_name}({rendered_kwargs})", None
-
-
-def _collect_steps(spec: SceneSpec) -> list[WorkflowStep | BundleStep]:
-    """Every atomic workflow step, plus every INLINE (non-ref) bundle step -- what
-    observation derivation (pick/place targets) scans, since a future scene could
-    introduce a pick_object/place_object usage only inside a bundle, not as its own
-    atomic entry. A `ref` step contributes nothing new here; it already resolves to an
-    atomic entry this function also visits directly.
-    """
-    steps: list[WorkflowStep | BundleStep] = list(spec.workflows.values())
-    for bundle_steps in spec.bundles.values():
-        steps.extend(s for s in bundle_steps if s.ref is None)
-    return steps
 
 
 def _build_context(spec: SceneSpec, catalog: Catalog, out_dir: Path | None = None) -> _CompileContext:
@@ -463,12 +424,10 @@ def _resolve_gripper_joint_names(ctx: _CompileContext) -> list[str]:
 
 
 def _pick_and_place_targets(spec: SceneSpec) -> tuple[list[str], list[str]]:
-    all_steps = _collect_steps(spec)
+    all_steps = list(spec.workflows.values())
     # dict.fromkeys(), not a set: preserves first-seen order (cosmetic, for stable/
     # readable output) while still deduping -- the SAME object/target named by more than
-    # one step (e.g. an atomic entry and a bundle-only variant both picking "beaker",
-    # VERIFIED to happen in a heater_transfer-shaped scene's "pick_beaker"/
-    # "observe_heating" steps) would otherwise emit the same ObsTerm class attribute twice.
+    # one step would otherwise emit the same ObsTerm class attribute twice.
     pick_targets = list(
         dict.fromkeys(s.params["object"] for s in all_steps if s.action == "pick_object" and "object" in s.params)
     )
@@ -478,48 +437,16 @@ def _pick_and_place_targets(spec: SceneSpec) -> tuple[list[str], list[str]]:
     return pick_targets, place_targets
 
 
-def _render_workflows_body(spec: SceneSpec, ctx: _CompileContext) -> tuple[str, list[str]]:
-    """(workflows_dict_body, const_lines) -- the full `workflows = {...}` dict contents
-    (atomic entries and bundles together, bundles as list literals -- see BundleStep's
-    docstring for why both land in the same dict) plus the module-level `_X_KWARGS`
-    constants any bundle `ref` needs.
-
-    Atomic entries referenced by at least one bundle get a module-level `_X_KWARGS`
-    constant, shared verbatim between the atomic dict entry and every bundle that refs
-    it -- see BundleStep's docstring for why this matters (workflow_overrides mutates a
-    workflow's Cfg instance in place; two entries sharing one instance, not two
-    separately-typed-but-equal ones, is what keeps an override from silently failing to
-    reach the bundle, or leaking into it unexpectedly). Entries no bundle refs keep the
-    plain inline-kwargs form (unchanged from a scene with no bundles at all).
-    """
-    refd_names = {bstep.ref for steps in spec.bundles.values() for bstep in steps if bstep.ref is not None}
-
-    const_lines: list[str] = []
+def _render_workflows_body(spec: SceneSpec, ctx: _CompileContext) -> str:
+    """The full `workflows = {...}` dict contents, one `Cls(kwargs)` entry per step."""
     workflow_lines: list[str] = []
     for wf_name, step in spec.workflows.items():
-        const_name = _kwargs_const_name(wf_name) if wf_name in refd_names else None
-        call_text, const_line = _render_step_call(step.action, step.params, ctx, const_name=const_name)
-        if const_line is not None:
-            const_lines.append(const_line)
-        workflow_lines.append(f'{_INDENT2}"{wf_name}": {call_text},')
-
-    for bundle_name, bsteps in spec.bundles.items():
-        item_lines = []
-        for bstep in bsteps:
-            if bstep.ref is not None:
-                atomic = spec.workflows[bstep.ref]
-                call_text, _ = _render_step_call(
-                    atomic.action, atomic.params, ctx, const_name=_kwargs_const_name(bstep.ref)
-                )
-            else:
-                call_text, _ = _render_step_call(bstep.action, bstep.params, ctx, const_name=None)
-            item_lines.append(f"{_INDENT3}{call_text},")
-        workflow_lines.append(f'{_INDENT2}"{bundle_name}": [\n' + "\n".join(item_lines) + f"\n{_INDENT2}],")
-
-    return "\n".join(workflow_lines), const_lines
+        cls_name, rendered_kwargs = _resolve_step_kwargs(step.action, step.params, ctx)
+        workflow_lines.append(f'{_INDENT2}"{wf_name}": {cls_name}({rendered_kwargs}),')
+    return "\n".join(workflow_lines)
 
 
-def _render_import_lines(ctx: _CompileContext, const_lines: list[str]) -> list[str]:
+def _render_import_lines(ctx: _CompileContext) -> list[str]:
     lines = ["import os", ""] if ctx.package_class_defs else []
     lines += [
         "from matterix.envs import MatterixBaseEnvCfg, mdp",
@@ -544,15 +471,13 @@ def _render_import_lines(ctx: _CompileContext, const_lines: list[str]) -> list[s
         "from isaaclab.managers import SceneEntityCfg",
         "from isaaclab.utils import configclass",
     ]
-    if const_lines:
-        lines += ["", *const_lines]
     if ctx.package_class_defs:
         lines += ["", "_SCENE_DIR = os.path.dirname(os.path.abspath(__file__))"]
     return lines
 
 
 def compile_scene(
-    spec: SceneSpec, *, regen_hint: str | None = None, out_dir: Path | None = None
+    spec: SceneSpec, *, regen_hint: str, out_dir: Path | None = None
 ) -> tuple[str, str]:
     """Render `spec` into (env_cfg_py_text, init_py_text). Raises CompileError naming the
     exact problem for anything this function itself detects (e.g. an unknown robot in
@@ -561,27 +486,18 @@ def compile_scene(
     names/fields.
 
     `regen_hint` is the "how to regenerate this file" text in the generated header --
-    the compiler itself doesn't know or care which of compile_scene.py's
-    scene_specs/*.yaml or from_eos.py's lab.yml/protocol.yml built `spec`, so
-    the caller says how to reproduce it. Defaults to compile_scene.py's own
-    scene_specs/*.yaml command (this function's only caller before from_eos.py existed),
-    so existing callers that don't pass this keep getting identical output.
+    the caller (from_eos.py) knows how `spec` was built, the compiler doesn't.
 
     `out_dir` is where the caller will write env_cfg_py_text -- only used to write each
     package asset's `usd_path` relative to it (see `_render_package_asset_class()`).
     """
-    if regen_hint is None:
-        regen_hint = (
-            f"Regenerate with:\n    python -m user.matterix_bridge.schema.compile_scene "
-            f"scene_specs/{spec.name}.yaml"
-        )
     catalog = load_catalog()
     ctx = _build_context(spec, catalog, out_dir)
     gripper_joint_names = _resolve_gripper_joint_names(ctx)
 
     # Order matters here: several calls below add to ctx.semantics_imports/action_imports
     # as a side effect, and those are only read once, by _render_import_lines(), last.
-    workflows_body, const_lines = _render_workflows_body(spec, ctx)
+    workflows_body = _render_workflows_body(spec, ctx)
 
     pick_targets, place_targets = _pick_and_place_targets(spec)
     objects_body = "\n".join(_render_asset_entry(s, spec.assets[s], ctx) for s in ctx.object_slots)
@@ -596,7 +512,7 @@ def compile_scene(
     rigid_objects_group_body = _render_rigid_objects_group(pick_targets, place_targets)
     articulations_group_body = _render_articulations_group(ctx)
 
-    import_lines = _render_import_lines(ctx, const_lines)
+    import_lines = _render_import_lines(ctx)
 
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(str(_TEMPLATES_DIR)),

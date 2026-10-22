@@ -150,7 +150,7 @@ def _discover_scene_modules() -> None:
 
     The per-scene `pkgutil.iter_modules()` walk below is what makes listing each new scene
     in `scenes/__init__.py` (`from . import my_scene`) optional rather than required --
-    compiling a scene (schema/compile_scene.py) or copying an exp*/ example is now enough
+    generating a scene (schema/from_eos.py) or copying an exp*/ example is now enough
     on its own; this function finds it regardless. Existing explicit imports (this
     package's own `scenes/__init__.py` lists exp1-4) keep working unchanged -- re-importing
     an already-imported module is a cached no-op, not a double `gym.register()` call, so

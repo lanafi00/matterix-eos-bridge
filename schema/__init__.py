@@ -1,8 +1,8 @@
 """Declarative Matterix scene schema + compiler.
 
-Lets a scene (asset catalog entries, pos/rot, workflow step sequence) be authored as a
-small YAML file instead of hand-written `@configclass` Python -- see scene_specs/ for
-examples and CLAUDE.md for the design rationale. Nothing in this package imports
+Lets a scene (asset catalog entries, pos/rot, workflow step sequence) be derived from an
+EOS package's own lab.yml + protocol.yml instead of hand-written `@configclass` Python --
+see CLAUDE.md for the design rationale. Nothing in this package imports
 isaaclab/matterix/matterix_sm -- it only reads catalog.json (see dump_catalog.py at the
 repo root) and Python's own dataclasses/pydantic, so a scene spec can be validated and
 compiled into real Python on a plain machine, no conda env or Isaac Sim boot required.
@@ -10,10 +10,7 @@ The generated `*_env_cfg.py` file is what actually imports isaaclab/matterix, ex
 a hand-written scene -- that import only happens later, when Isaac Sim boots and
 `_discover_scene_modules()` (common/runtime.py) imports it.
 
-Two ways to *reach* a SceneSpec: hand-write one as scene_specs/*.yaml (compile_scene.py),
-or -- for an EOS package that wants zero bridge-owned scene YAML at all -- derive one
-straight from that package's own lab.yml + protocol.yml files (from_eos.py). The
-compiler itself (compiler.py) doesn't care which path built the SceneSpec it's given.
+from_eos.py builds the SceneSpec; compiler.py renders it.
 
     catalog.py     - loads catalog.json, the offline record of what Matterix ships
                       (see dump_catalog.py) that validation checks names/fields against.
@@ -23,11 +20,10 @@ compiler itself (compiler.py) doesn't care which path built the SceneSpec it's g
                          -- see that module's docstring for why this exists and its
                          current, deliberately narrow scope.
     compiler.py     - SceneSpec -> rendered `*_env_cfg.py` + `__init__.py` text.
-    compile_scene.py - CLI: scene_specs/*.yaml path -> validate -> render -> write into
-                        scenes/<name>/.
     from_eos.py     - CLI: an EOS package's root -> read its labs/*/lab.yml + each
-                        protocol.yml task's matterix: block -> assemble a SceneSpec -> same render/write
-                        as compile_scene.py, plus a generated matterix_registrations.py.
+                        protocol.yml task's matterix: block -> assemble a SceneSpec -> render
+                        and write into <package>/scenes/<name>/, plus a generated
+                        matterix_registrations.py.
                         The only module here that imports anything from `eos` itself
                         (`eos.configuration.entities`, for its LabDef/ProtocolDef parsers)
                         -- still no isaaclab/matterix/matterix_sm, but meant to run from

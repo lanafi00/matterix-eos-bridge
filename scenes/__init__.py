@@ -6,7 +6,7 @@ Each sub-package defines one self-contained environment (robots + objects + obse
 of them -- see common/runtime.py's `_discover_scene_modules()`, which imports this
 package (and any other EOS package's own `scenes` subpackage) automatically, AND walks
 every scene subpackage found under it -- a new scene doesn't need to be added to the
-imports below to be picked up (compiling one via schema/compile_scene.py, or copying an
+imports below to be picked up (generating one via schema/from_eos.py, or copying an
 exp*/ example, is enough on its own); exp1/exp3 stay explicit here only because
 dump_catalog.py's own warm-up import (`import user.matterix_bridge.scenes`) needs AT
 LEAST ONE scene submodule imported as a side effect to trigger matterix_assets' circular-
@@ -20,14 +20,8 @@ schema-scope examples never actually booted by any test, exp4 additionally a kno
     exp1_beaker_pick      - single Franka arm picks up a beaker (the "hello world" of Matterix).
     exp3_heater_transfer  - adds the semantics engine: turn on a heater, observe heat transfer.
 
-(schema/compile_scene.py -- see CLAUDE.md's "Declarative scene schema" section -- can
-compile a hand-authored scene_specs/*.yaml into this same directory; none are checked in
-here, since a compiled scene is fully reproducible from its YAML in one command and
-would otherwise just be a duplicate of whatever exp*/ example it matches. The three YAML
-fixtures originally used to round-trip-verify the schema/compiler against exp1/exp3/exp4's
-shapes were removed once `schema/from_eos.py` (an EOS package's own lab.yml, see
-`eos/user/beaker_lab`) became the actively-used path -- CLAUDE.md still records what that
-round-trip verified. Whatever gets compiled here is picked up automatically -- see
+(Generated scenes live in each EOS package's own scenes/ -- see schema/from_eos.py and
+`eos/user/beaker_lab` -- and are picked up the same way, via
 `_discover_scene_modules()`'s auto-walk, no listing needed below.)
 
 Their env ids are what protocol_registry.py's PROTOCOL_TWINS maps EOS protocol types onto.
